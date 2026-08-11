@@ -1,0 +1,5 @@
+import {describe,expect,test} from "bun:test";
+import {exportChordPro,parseChord,parseChordPro,simplifyChord,transposeChord} from "./chords";
+const id="019fec0d-0000-7000-8000-000000000001";
+describe("chord grammar",()=>{test("parses rich qualities and slash bass",()=>expect(parseChord("B♭maj7/D")).toEqual({root:"Bb",quality:"maj7",bass:"D",raw:"Bbmaj7/D"}));test("transposes roots and slash bass consistently",()=>expect(transposeChord("Bbmaj7/D",2)).toBe("Cmaj7/E"));test("simplifies while preserving minor and bass",()=>expect(simplifyChord("F#m9/C#")).toBe("F#m/C#"))});
+describe("ChordPro",()=>{test("round trips directives, sections, chords, and lyrics",()=>{const input="{title: Night}\n{artist: The Band}\n{start_of_chorus}\n[Am]We own the [F]dark";const chart=parseChordPro(input,id,id);expect(chart.lines[0]!.section).toBe("Chorus");expect(chart.lines[0]!.segments[1]!.chord).toBe("F");const restored=parseChordPro(exportChordPro(chart),id,id);expect(restored.title).toBe("Night");expect(restored.lines[0]!.segments).toEqual(chart.lines[0]!.segments)})});

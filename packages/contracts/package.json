@@ -1,0 +1,6 @@
+{
+  "name": "@atarang/contracts",
+  "private": true,
+  "type": "module",
+  "exports": "./src/types.ts"
+}

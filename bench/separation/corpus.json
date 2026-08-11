@@ -1,0 +1,13 @@
+{
+  "schema": "atarang.benchmark-corpus/1",
+  "required": [
+    {"id": "synthetic-30s", "kind": "synthetic", "durationSeconds": 30},
+    {"id": "licensed-dense-4m", "kind": "licensed", "durationSeconds": 240},
+    {"id": "licensed-10m", "kind": "licensed", "durationSeconds": 600},
+    {"id": "silence", "kind": "edge"},
+    {"id": "mono", "kind": "edge"},
+    {"id": "malformed", "kind": "negative"},
+    {"id": "maximum-duration", "kind": "limit", "durationSeconds": 1200}
+  ],
+  "releaseRuns": {"warmups": 1, "measuredRepetitions": 5, "concurrency": [1, 2]}
+}

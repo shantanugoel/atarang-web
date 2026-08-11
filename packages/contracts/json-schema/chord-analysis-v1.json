@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atarang.local/schemas/chord-analysis-v1.json",
+  "title": "ChordAnalysisV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "originalId", "revision", "algorithmVersion", "key", "confidence", "segments", "updatedAt"],
+  "properties": {
+    "schema": {"const": "atarang.chords/1"},
+    "originalId": {"type": "string", "format": "uuid"},
+    "revision": {"type": "integer", "minimum": 0},
+    "algorithmVersion": {"const": "atarang-chroma/1"},
+    "key": {"type": ["string", "null"]},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["startTimeUs", "endTimeUs", "chord", "confidence"],
+        "properties": {
+          "startTimeUs": {"type": "integer", "minimum": 0},
+          "endTimeUs": {"type": "integer", "minimum": 1},
+          "chord": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+    "updatedAt": {"type": "string", "format": "date-time"}
+  }
+}

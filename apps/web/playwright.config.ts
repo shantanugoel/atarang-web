@@ -1,0 +1,3 @@
+import{defineConfig,devices}from"@playwright/test";
+const executablePath=process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+export default defineConfig({testDir:"./tests/e2e",testMatch:"**/*.e2e.ts",fullyParallel:false,workers:1,timeout:45_000,expect:{timeout:8_000},use:{baseURL:"http://127.0.0.1:4173",trace:"retain-on-failure",screenshot:"only-on-failure",launchOptions:executablePath?{executablePath}:{}},webServer:{command:"bun run build && bun run preview",url:"http://127.0.0.1:4173",reuseExistingServer:true,timeout:30_000},projects:[{name:"chromium",use:{...devices["Desktop Chrome"]}},{name:"mobile-chromium",use:{...devices["Pixel 7"]}}]});

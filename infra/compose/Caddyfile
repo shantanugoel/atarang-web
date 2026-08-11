@@ -1,0 +1,31 @@
+{
+  admin off
+}
+
+{$ATARANG_SITE_ADDRESS:http://localhost} {
+  encode zstd gzip
+  header {
+    Cross-Origin-Opener-Policy "same-origin"
+    Cross-Origin-Embedder-Policy "require-corp"
+    Cross-Origin-Resource-Policy "same-origin"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://lrclib.net; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    Referrer-Policy "no-referrer"
+    X-Content-Type-Options "nosniff"
+    Permissions-Policy "camera=(), geolocation=(), payment=(), usb=()"
+  }
+  @immutable path_regexp immutable ^/(assets|runtime)/.+-[a-z0-9]+\.[a-z0-9]+$
+  header @immutable Cache-Control "public, max-age=31536000, immutable"
+  @mutable path / /index.html /precache.json /manifest.webmanifest
+  header @mutable Cache-Control "no-cache"
+  handle /api/v1/metrics {
+    respond 404
+  }
+  handle /api/* {
+    reverse_proxy api:8000
+  }
+  handle {
+    root * /srv/web
+    try_files {path} /index.html
+    file_server
+  }
+}

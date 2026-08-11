@@ -1,0 +1,33 @@
+{
+  "name": "@atarang/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.html",
+    "build": "bun run build.ts",
+    "preview": "bun run preview.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@atarang/contracts": "workspace:*",
+    "@phosphor-icons/react": "^2.1.10",
+    "ajv": "^8.17.1",
+    "fft.js": "4.0.4",
+    "idb": "^8.0.3",
+    "mediabunny": "1.53.0",
+    "onnxruntime-web": "1.27.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router": "^7.8.0",
+    "zustand": "^5.0.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2",
+    "@types/bun": "^1.2.19",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "typescript": "^5.9.2"
+  }
+}

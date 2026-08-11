@@ -1,0 +1,4 @@
+import {describe,expect,test} from "bun:test";
+import {activeLyricLine,exportLrc,parseLrc} from "./lrc";
+const id="019fec0c-0000-7000-8000-000000000001";
+describe("LRC",()=>{test("parses offset, duplicate timestamps, and enhanced word timing",()=>{const document=parseLrc("[offset:250]\n[00:01.00][00:03.00]<00:01.00>Hello <00:01.50>world",id,"2026-08-10T00:00:00.000Z");expect(document.offsetUs).toBe(250_000);expect(document.lines).toHaveLength(2);expect(document.lines[0]!.words.map(word=>word.text)).toEqual(["Hello ","world"]);expect(activeLyricLine(document,1_300_000)).toBe(0)});test("exports a parseable timed document",()=>{const first=parseLrc("[00:02.34]A line",id,"2026-08-10T00:00:00.000Z");const second=parseLrc(exportLrc(first),id,"2026-08-10T00:00:00.000Z");expect(second.lines[0]!.startTimeUs).toBe(2_340_000);expect(second.lines[0]!.text).toBe("A line")})});

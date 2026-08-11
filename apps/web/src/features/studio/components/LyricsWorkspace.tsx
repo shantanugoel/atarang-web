@@ -1,0 +1,40 @@
+import { useRef, useState } from "react";
+import { CaretRight, DownloadSimple, MagnifyingGlass, MusicNotesSimple, PencilSimple, Plus, UploadSimple } from "@phosphor-icons/react";
+import type { LyricsDocumentV1 } from "@atarang/contracts";
+import { StudioTab, useStudioStore } from "../studioStore";
+import { activeLyricLine, exportLrc, parseLrc } from "../../lyrics/lrc";
+import { useLyrics } from "../../lyrics/useLyrics";
+import {ChordWorkspace} from "./ChordWorkspace";
+import {TakesWorkspace} from "./TakesWorkspace";
+import styles from "./LyricsWorkspace.module.css";
+import { DEMO_TRACK } from "../useDemoAudio";
+import {uuidV7} from "../../../storage/ids";
+import {findSyncedLyrics} from "../../lyrics/lrclib";
+
+const formatTime=(timeUs?:number)=>timeUs===undefined?"--:--.--":`${Math.floor(timeUs/60_000_000).toString().padStart(2,"0")}:${((timeUs%60_000_000)/1_000_000).toFixed(2).padStart(5,"0")}`;
+
+export function LyricsWorkspace({ originalId, songTitle, artistName, durationUs, currentTimeUs = 0, seekTo }: { originalId?:string|undefined; songTitle?:string|undefined;artistName?:string|undefined;durationUs?:number|undefined;currentTimeUs?:number|undefined;seekTo?:((seconds:number)=>void)|undefined }) {
+  const tab=useStudioStore(state=>state.tab),setTab=useStudioStore(state=>state.setTab),{document,save}=useLyrics(originalId);const[editing,setEditing]=useState(false);const[lookupStatus,setLookupStatus]=useState("");const input=useRef<HTMLInputElement>(null);const active=document?activeLyricLine(document,currentTimeUs):-1;
+  const create=()=>{if(!originalId)return;save({schema:"atarang.lyrics/1",originalId,revision:0,offsetUs:0,lines:[{id:`${originalId}:manual:0`,text:"",source:"manual",words:[]}],updatedAt:new Date().toISOString()});setEditing(true)};
+  const importFile=async(file?:File)=>{if(!file||!originalId)return;save(parseLrc(await file.text(),originalId));setEditing(false);if(input.current)input.current.value=""};
+  const update=(change:(value:LyricsDocumentV1)=>LyricsDocumentV1)=>{if(document)save(change(document))};
+  const setTime=(index:number)=>update(value=>{const lines=value.lines.map(line=>({...line,words:[...line.words]})),line=lines[index]!,minimum=index>0?(lines[index-1]!.startTimeUs??0):0,start=Math.max(minimum,Math.round(currentTimeUs));line.startTimeUs=start;line.endTimeUs=Math.max(start+500_000,lines.slice(index+1).find(item=>item.startTimeUs!==undefined)?.startTimeUs??start+5_000_000);line.source="manual";if(index>0&&lines[index-1]!.startTimeUs!==undefined){const previous=lines[index-1]!;previous.endTimeUs=start;previous.words=previous.words.filter(word=>word.startTimeUs<start).map(word=>({...word,endTimeUs:Math.min(word.endTimeUs,start)}))}return{...value,lines}});
+  const download=()=>{if(!document)return;const url=URL.createObjectURL(new Blob([exportLrc(document)],{type:"text/plain"})),anchor=globalThis.document.createElement("a");anchor.href=url;anchor.download=`${songTitle??"lyrics"}.lrc`;anchor.click();URL.revokeObjectURL(url)};
+  const lookup=async()=>{if(!originalId||!songTitle)return;setLookupStatus("Searching LRCLIB…");try{const lrc=await findSyncedLyrics({trackName:songTitle,...(artistName?{artistName}:{}),...(durationUs?{durationSeconds:durationUs/1_000_000}:{})});if(!lrc){setLookupStatus("No synced lyrics were found on LRCLIB.");return}save(parseLrc(lrc,originalId));setLookupStatus("Synced lyrics imported from LRCLIB.")}catch(error){setLookupStatus(error instanceof Error&&error.message==="lyrics_rate_limited"?"LRCLIB is busy. Try again shortly.":"LRCLIB lookup failed. You can still import an LRC file.")}};
+  return <section className={styles.workspace} aria-label="Song editor">
+    <div className={styles.tabs} role="tablist" aria-label="Practice content">{(["lyrics","chords","sheet","takes"] as StudioTab[]).map(item=><button key={item} role="tab" aria-selected={tab===item} onClick={()=>setTab(item)}>{item[0]!.toUpperCase()+item.slice(1)}</button>)}</div>
+    {tab==="lyrics"&&!originalId&&<DemoLyrics/>}
+    {tab==="lyrics"&&originalId&&document===undefined&&<div className={styles.analysisEmpty} role="status">Opening lyrics…</div>}
+    {tab==="lyrics"&&originalId&&document===null&&<div className={styles.analysisEmpty} role="tabpanel"><MusicNotesSimple weight="thin"/><strong>{songTitle} is ready to play</strong><p>Find synchronized lyrics on LRCLIB, import an LRC file, or write lyrics manually. Lookup sends only the displayed title, artist, and duration after you click.</p><div className={styles.emptyActions}><button disabled={lookupStatus==="Searching LRCLIB…"} onClick={()=>void lookup()}><MagnifyingGlass/>Find synced lyrics</button><button onClick={()=>input.current?.click()}><UploadSimple/>Import LRC</button><button onClick={create}><PencilSimple/>Write lyrics</button></div>{lookupStatus&&<p role="status">{lookupStatus}</p>}<input ref={input} className="sr-only" type="file" accept=".lrc,text/plain" aria-label="Choose LRC lyrics" onChange={event=>void importFile(event.target.files?.[0])}/></div>}
+    {tab==="lyrics"&&document&&<div className={styles.lyrics} role="tabpanel">
+      <div className={styles.editorToolbar}><button onClick={()=>setEditing(value=>!value)} aria-pressed={editing}><PencilSimple/>{editing?"Done":"Edit"}</button><button onClick={()=>input.current?.click()}><UploadSimple/>Import LRC</button><button onClick={download}><DownloadSimple/>Export LRC</button><span>Offset {document.offsetUs/1000} ms</span><button aria-label="Decrease lyric offset" onClick={()=>update(value=>({...value,offsetUs:value.offsetUs-100_000}))}>−</button><button aria-label="Increase lyric offset" onClick={()=>update(value=>({...value,offsetUs:value.offsetUs+100_000}))}>+</button><input ref={input} className="sr-only" type="file" accept=".lrc,text/plain" aria-label="Choose LRC lyrics" onChange={event=>void importFile(event.target.files?.[0])}/></div>
+      {editing?document.lines.map((line,index)=><div className={styles.editLine} key={line.id}><button onClick={()=>setTime(index)} aria-label={`Set line ${index+1} time at playhead`}>{formatTime(line.startTimeUs)}</button><textarea rows={1} value={line.text} aria-label={`Lyric line ${index+1}`} onChange={event=>update(value=>({...value,lines:value.lines.map((item,itemIndex)=>itemIndex===index?{...item,text:event.target.value,source:"manual",words:[]}:item)}))}/></div>):document.lines.map((line,index)=><button className={`${styles.timedLine} ${active===index?styles.active:""}`} key={line.id} onClick={()=>line.startTimeUs!==undefined&&seekTo?.((line.startTimeUs+document.offsetUs)/1_000_000)}>{active===index&&<CaretRight className={styles.caret} weight="fill" aria-hidden/>}<time>{formatTime(line.startTimeUs)}</time><p>{line.words.length?line.words.map((word,wordIndex)=><span className={currentTimeUs-document.offsetUs>=word.startTimeUs&&currentTimeUs-document.offsetUs<word.endTimeUs?styles.activeWord:""} key={wordIndex}>{word.text}</span>):line.text}</p></button>)}
+      {editing&&<button className={styles.addLine} onClick={()=>update(value=>({...value,lines:[...value.lines,{id:`${value.originalId}:manual:${uuidV7()}`,text:"",source:"manual",words:[]}]}))}><Plus/>Add line</button>}
+    </div>}
+    {tab==="chords"&&<ChordWorkspace originalId={originalId} songTitle={songTitle}/>}
+    {tab==="sheet"&&<div className={styles.emptyPanel} role="tabpanel"><strong>{songTitle??"Midnight Run"}</strong>{document?.lines.map(line=><p className={styles.sheetLine} key={line.id}>{line.text}</p>)??<p>Import lyrics to build a practice sheet.</p>}</div>}
+    {tab==="takes"&&(originalId?<TakesWorkspace originalId={originalId}/>:<TakesWorkspace/>)}
+  </section>;
+}
+
+function DemoLyrics(){return <div className={styles.analysisEmpty} role="tabpanel"><MusicNotesSimple weight="thin"/><strong>Playable CC0 demonstration</strong><p>“{DEMO_TRACK.title}” by {DEMO_TRACK.artist} is bundled under {DEMO_TRACK.license}. Use the transport below to play and seek the real audio.</p><a href={DEMO_TRACK.source} target="_blank" rel="noreferrer">Source and license</a></div>}

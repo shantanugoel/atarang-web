@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atarang.local/schemas/original-v1.json",
+  "title": "OriginalV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "originalId", "contentSha256", "sourceMediaType", "sampleRate", "channels", "durationFrames", "createdAt"],
+  "properties": {
+    "schema": {"const": "atarang.original/1"},
+    "originalId": {"type": "string", "format": "uuid"},
+    "contentSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "sourceMediaType": {"type": "string", "minLength": 3},
+    "sampleRate": {"type": "integer", "minimum": 8000, "maximum": 192000},
+    "channels": {"enum": [1, 2]},
+    "durationFrames": {"type": "integer", "minimum": 1},
+    "createdAt": {"type": "string", "format": "date-time"}
+  }
+}

@@ -1,0 +1,18 @@
+@import "./tokens.css";
+
+* { box-sizing: border-box; }
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+html { color-scheme: dark; background: var(--bg); }
+body { overflow: hidden; color: var(--text); background: var(--bg); font-family: var(--font-ui); font-size: 14px; -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button { color: inherit; }
+a { color: inherit; text-decoration: none; }
+button, [role="button"], a { outline: none; }
+button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { box-shadow: 0 0 0 2px var(--accent); z-index: 2; }
+button { border: 0; background: transparent; cursor: pointer; }
+.icon-button { width: 38px; height: 38px; display: inline-grid; place-items: center; border-radius: var(--radius-sm); color: var(--text-muted); }
+.icon-button:hover { color: var(--text); background: var(--surface-hover); }
+.icon-button svg { width: 21px; height: 21px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: no-preference) { :where(button, a, input) { transition: color .16s ease, background-color .16s ease, border-color .16s ease, opacity .16s ease; } }

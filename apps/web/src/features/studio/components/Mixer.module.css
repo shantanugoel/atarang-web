@@ -1,0 +1,22 @@
+.mixer { min-width: 0; display: grid; grid-template-columns: repeat(4, 1fr); border-right: 1px solid var(--line-strong); background: var(--surface-1); }
+.unavailable .channel{opacity:.42}.unavailable button,.unavailable input{cursor:not-allowed}
+.channel { --stem: var(--text); min-width: 0; display: grid; grid-template-rows: 42px 62px 58px minmax(150px, 1fr) 28px 4px 48px; align-items: center; justify-items: center; padding: 8px 10px 0; border-right: 1px solid var(--line-strong); }
+.channel:last-child { border-right: 0; }
+.channel[data-stem="vocals"] { --stem: var(--vocals); }.channel[data-stem="drums"] { --stem: var(--drums); }.channel[data-stem="bass"] { --stem: var(--bass); }.channel[data-stem="other"] { --stem: var(--other); }
+.stemName { color: var(--stem); font-size: 13px; font-weight: 750; padding: 7px 4px; }
+.stemName[aria-pressed="true"] { text-decoration: underline; text-underline-offset: 6px; }
+.channelButtons { align-self: stretch; display: grid; gap: 6px; width: 100%; }
+.channelButtons button { min-height: 27px; color: var(--text-soft); border: 1px solid var(--line-strong); border-radius: 2px; font-size: 12px; font-weight: 700; }
+.channelButtons button[aria-pressed="true"] { color: var(--stem); border-color: var(--stem); background: color-mix(in srgb, var(--stem) 12%, transparent); }
+.pan { display: grid; grid-template-columns: auto 38px auto; align-items: center; gap: 6px; color: var(--text-muted); font-size: 9px; }
+.panDial { position: relative; width: 38px; height: 21px; border: 1px solid var(--text-muted); border-bottom: 0; border-radius: 40px 40px 0 0; }
+.panDial::after { content: ""; position: absolute; width: 2px; height: 12px; left: 18px; top: -4px; background: var(--stem); border-radius: 2px; }
+.faderWrap { position: relative; align-self: stretch; width: 50px; min-height: 150px; display: grid; place-items: center; }
+.faderWrap::before { content: "10\A 5\A 0\A -5\A -10\A -20\A -30\A -40\A -60\A -∞"; white-space: pre; position: absolute; left: -12px; inset-block: 0; display: flex; align-items: stretch; line-height: calc(100% / 9); color: var(--text-muted); font: 8px/1.75 var(--font-mono); }
+.meter { position: absolute; inset-block: 7px; width: 7px; background: linear-gradient(to top, var(--stem) 0 61%, #252a31 61%); border: 1px solid #090a0d; }
+.faderWrap input { position: absolute; width: 180px; height: 32px; transform: rotate(-90deg); accent-color: var(--stem); cursor: ns-resize; }
+.channel output { font: 11px var(--font-mono); color: var(--text-soft); }
+.colorRule { width: 100%; height: 3px; background: var(--stem); }
+.speaker { width: 100%; height: 100%; display: grid; place-items: center; color: var(--text-soft); }
+.speaker svg { width: 19px; height: 19px; }
+@media(max-width:1279px){ .channel { padding-inline: 7px; } }

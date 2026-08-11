@@ -1,0 +1,25 @@
+services:
+  api:
+    environment:
+      ATARANG_CPU_WORKER_AVAILABLE: "false"
+      ATARANG_CUDA_WORKER_AVAILABLE: "true"
+
+  worker-cuda:
+    extends:
+      file: compose.yaml
+      service: cleanup
+    profiles: [cuda]
+    build:
+      context: ../..
+      dockerfile: infra/images/worker-cuda.Dockerfile
+      args:
+        MODEL_ARTIFACT_SHA256: ${MODEL_ARTIFACT_SHA256:?set MODEL_ARTIFACT_SHA256}
+    command: [atarang-worker]
+    environment:
+      ATARANG_WORKER_ID: worker-cuda-1
+      ATARANG_WORKER_CLASS: cuda
+      ATARANG_MODEL_ARTIFACT_SHA256: ${MODEL_ARTIFACT_SHA256:?set MODEL_ARTIFACT_SHA256}
+      ATARANG_IMPLEMENTATION_VERSION: ${IMAGE_REVISION:-development}
+    tmpfs: ["/tmp/atarang-worker:size=8G,uid=10002,gid=10002,mode=0700"]
+    devices:
+      - nvidia.com/gpu=all

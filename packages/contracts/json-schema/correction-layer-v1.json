@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atarang.local/schemas/correction-layer-v1.json",
+  "title": "CorrectionLayerV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "originalId", "analysisKind", "generatedRevision", "revision", "operations", "updatedAt"],
+  "properties": {
+    "schema": {"const": "atarang.corrections/1"},
+    "originalId": {"type": "string", "format": "uuid"},
+    "analysisKind": {"enum": ["beats", "chords", "lyrics"]},
+    "generatedRevision": {"type": "integer", "minimum": 0},
+    "revision": {"type": "integer", "minimum": 0},
+    "operations": {"type": "array", "items": {"type": "object"}},
+    "updatedAt": {"type": "string", "format": "date-time"}
+  }
+}

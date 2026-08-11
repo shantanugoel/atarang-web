@@ -1,0 +1,5 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://atarang.local/schemas/lyrics-document-v1.json","title":"LyricsDocumentV1","type":"object","additionalProperties":false,
+  "required":["schema","originalId","revision","offsetUs","lines","updatedAt"],
+  "properties":{"schema":{"const":"atarang.lyrics/1"},"originalId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"offsetUs":{"type":"integer"},"updatedAt":{"type":"string","format":"date-time"},"lines":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","text","source","words"],"properties":{"id":{"type":"string","minLength":1},"text":{"type":"string"},"startTimeUs":{"type":"integer","minimum":0},"endTimeUs":{"type":"integer","minimum":0},"source":{"enum":["manual","lrc"]},"confidence":{"type":"number","minimum":0,"maximum":1},"words":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["text","startTimeUs","endTimeUs"],"properties":{"text":{"type":"string"},"startTimeUs":{"type":"integer","minimum":0},"endTimeUs":{"type":"integer","minimum":0}}}}}}}}
+}

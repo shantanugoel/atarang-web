@@ -1,0 +1,58 @@
+# JavaScript dependencies and generated frontend output
+node_modules/
+dist/
+build/
+coverage/
+.nyc_output/
+private-sourcemaps/
+*.tsbuildinfo
+
+# Browser and end-to-end test artifacts
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# Python environments, bytecode, packaging, and tool caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local configuration and secrets; checked-in examples remain allowed
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+
+# Downloaded model weights. Manifests and download scripts remain tracked.
+/models/**/*.onnx
+/models/**/*.pt
+/models/**/*.pth
+/models/**/*.th
+/models/**/*.safetensors
+
+# Runtime debris and crash dumps
+*.log
+*.pid
+*.tmp
+*.swp
+*.swo
+core
+core.*
+*.core
+
+# Editor and operating-system metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
