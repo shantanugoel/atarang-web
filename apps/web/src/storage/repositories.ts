@@ -13,7 +13,12 @@ export async function getBlob(id: string) { return (await database).get("blobs",
 export async function getWaveform(originalId: string) { return (await database).get("waveforms", originalId); }
 export async function putWaveform(record: WaveformRecord) { await (await database).put("waveforms", record); notify(); }
 export async function listSeparations() { return (await database).getAll("separations"); }
-export async function getSeparationForOriginal(originalId:string) { return (await database).getAll("separations").then(items=>items.find(item=>item.originalId===originalId)); }
+export async function getSeparationForOriginal(originalId:string,contentSha256?:string) {
+  const items=await(await database).getAll("separations");
+  const exact=items.find(item=>item.originalId===originalId||item.manifest.original.originalId===originalId);
+  const match=exact??(contentSha256?items.find(item=>item.manifest.original.contentSha256===contentSha256):undefined);
+  return match&&match.originalId!==originalId?{...match,originalId}:match;
+}
 
 export async function publishSeparation(record:SeparationRecord, blobs:BlobRecord[], operation:OperationRecord) {
   const db=await database; const transaction=db.transaction(["separations","blobs","operations"],"readwrite");

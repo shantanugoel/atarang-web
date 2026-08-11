@@ -9,8 +9,9 @@ export function useLibrary() {
   const [performances,setPerformances]=useState<Awaited<ReturnType<typeof listAllPerformances>>>([]);
   const refresh = useCallback(async () => {
     const [nextSongs, nextUsage, separations,nextPerformances] = await Promise.all([listOriginals(), libraryUsage(), listSeparations(),listAllPerformances()]);
-    const separatedIds = new Set(separations.map((record) => record.originalId));
-    setSongs(nextSongs.map((song) => Object.assign(song, { separated: separatedIds.has(song.id) })));setPerformances(nextPerformances); setUsage(nextUsage); setLoading(false);
+    const separatedIds = new Set(separations.flatMap((record) => [record.originalId,record.manifest.original.originalId]));
+    const separatedHashes = new Set(separations.map((record) => record.manifest.original.contentSha256));
+    setSongs(nextSongs.map((song) => Object.assign(song, { separated: separatedIds.has(song.id)||separatedHashes.has(song.contentSha256) })));setPerformances(nextPerformances); setUsage(nextUsage); setLoading(false);
   }, []);
   useEffect(() => { void refresh(); return subscribeLibrary(() => void refresh()); }, [refresh]);
   return { songs, performances, usage, loading, refresh };

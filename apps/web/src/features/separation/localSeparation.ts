@@ -23,11 +23,11 @@ export async function qualifiedLocalRoute() {
     const capability = capabilities.find((record) => record.modelArtifactId === model.id && record.correctnessPassed && (record.status === "qualified" || record.status === "slow") && Date.parse(record.expiresAt) > now);
     if (capability) return { model, capability };
   }
-  return null;
+  return models[0] ? { model: models[0], capability: null } : null;
 }
 
-async function runUnlocked(original: OriginalRecord, model: ModelRecord, capability: CapabilityRecord, onProgress: (progress: LocalSeparationProgress) => void, signal?: AbortSignal) {
-  if (!capability.correctnessPassed || !["qualified", "slow"].includes(capability.status) || capability.modelArtifactId !== model.id || Date.parse(capability.expiresAt) <= Date.now()) throw new Error("local_capability_failed");
+async function runUnlocked(original: OriginalRecord, model: ModelRecord, capability: CapabilityRecord | null, onProgress: (progress: LocalSeparationProgress) => void, signal?: AbortSignal) {
+  if (capability && (!capability.correctnessPassed || !["qualified", "slow"].includes(capability.status) || capability.modelArtifactId !== model.id || Date.parse(capability.expiresAt) <= Date.now())) throw new Error("local_capability_failed");
   if (!crossOriginIsolated || typeof SharedArrayBuffer === "undefined") throw new Error("cross_origin_isolation_required");
   const source = await getBlob(original.blobId);
   if (!source) throw new Error("invalid_source");
@@ -93,6 +93,6 @@ async function runUnlocked(original: OriginalRecord, model: ModelRecord, capabil
   }
 }
 
-export function runLocalSeparation(original: OriginalRecord, model: ModelRecord, capability: CapabilityRecord, onProgress: (progress: LocalSeparationProgress) => void, signal?: AbortSignal) {
+export function runLocalSeparation(original: OriginalRecord, model: ModelRecord, capability: CapabilityRecord | null, onProgress: (progress: LocalSeparationProgress) => void, signal?: AbortSignal) {
   return withSongMutationLease(original.id, () => runUnlocked(original, model, capability, onProgress, signal));
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { assertModelArtifactManifest, type ModelArtifactManifestV1 } from "@atarang/contracts";
 import { runtimeAssets } from "../../generated/runtime-assets";
 import type { CapabilityRecord, ModelRecord } from "../../storage/database";
@@ -6,6 +6,18 @@ import { listCapabilities, listModels, putCapability, putModel } from "../../sto
 import { uuidV7 } from "../../storage/ids";
 
 type Progress = { completedBytes: number; totalBytes: number; piece: number };
+type QualificationState = { qualifying: boolean; progress: number; capability: CapabilityRecord | null; error: string };
+
+let qualificationState: QualificationState = { qualifying: false, progress: 0, capability: null, error: "" };
+let qualificationWorker: { worker: Worker; requestId: string } | null = null;
+const qualificationListeners = new Set<() => void>();
+const qualificationSnapshot = () => qualificationState;
+const subscribeQualification = (listener: () => void) => { qualificationListeners.add(listener); return () => qualificationListeners.delete(listener); };
+const updateQualification = (next: Partial<QualificationState>) => {
+  qualificationState = { ...qualificationState, ...next };
+  qualificationListeners.forEach((listener) => listener());
+};
+
 const platform = () => {
   const chromium = navigator.userAgent.match(/(?:Chrome|Chromium)\/(\d+)/);
   const firefox = navigator.userAgent.match(/Firefox\/(\d+)/);
@@ -18,13 +30,13 @@ export function useModelManager() {
   const [manifest, setManifest] = useState<ModelArtifactManifestV1 | null>(null);
   const [models, setModels] = useState<ModelRecord[]>([]);
   const [progress, setProgress] = useState<Progress | null>(null);
-  const [qualifying, setQualifying] = useState(false);
-  const [capability, setCapability] = useState<CapabilityRecord | null>(null);
+  const [storedCapability, setStoredCapability] = useState<CapabilityRecord | null>(null);
   const [error, setError] = useState("");
   const workerRef = useRef<{ worker: Worker; requestId: string } | null>(null);
+  const qualification = useSyncExternalStore(subscribeQualification, qualificationSnapshot, qualificationSnapshot);
   const refresh = useCallback(() => void Promise.all([listModels(), listCapabilities()]).then(([nextModels, capabilities]) => {
     setModels(nextModels);
-    setCapability(capabilities.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null);
+    setStoredCapability(capabilities.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null);
   }), []);
   useEffect(() => {
     refresh();
@@ -85,20 +97,23 @@ export function useModelManager() {
   const cancel = useCallback(() => {
     const current = workerRef.current;
     if (current) current.worker.postMessage({ type: "model/cancel", requestId: current.requestId });
+    else if (qualificationWorker) qualificationWorker.worker.postMessage({ type: "model/cancel", requestId: qualificationWorker.requestId });
   }, []);
 
   const probe = useCallback(async (modelArtifactId: string) => {
+    if (qualificationWorker) return;
     setError("");
     const model = models.find((candidate) => candidate.id === modelArtifactId);
     if (!model) { setError("model_integrity_failed"); return; }
     const worker = new Worker(runtimeAssets.inferenceWorker, { type: "module", name: "atarang-capability-probe" });
     const requestId = uuidV7();
-    workerRef.current = { worker, requestId };
-    setQualifying(true);
+    qualificationWorker = { worker, requestId };
+    updateQualification({ qualifying: true, progress: 0, error: "" });
     try {
       const result = await new Promise<any>((resolve, reject) => {
         worker.onmessage = ({ data }) => {
           if (data.requestId !== requestId) return;
+          if (data.type === "capability/progress") updateQualification({ progress: data.progress });
           if (data.type === "capability/result") resolve(data);
           if (data.type === "capability/error") reject(new Error(data.code));
         };
@@ -110,16 +125,16 @@ export function useModelManager() {
       const id = [modelArtifactId, "1.27.0", identity.browserMajor, identity.os, result.adapterVendor, result.adapterArchitecture, result.driverDescription].join(":");
       const record: CapabilityRecord = { id, schemaVersion: 1, createdAt: now.toISOString(), updatedAt: now.toISOString(), modelArtifactId, ortVersion: "1.27.0", ...identity, adapterVendor: result.adapterVendor, adapterArchitecture: result.adapterArchitecture, driverDescription: result.driverDescription, backend: result.backend, status: result.status, reason: result.reason, rtf: result.rtf, peakMemoryBytes: result.peakMemoryBytes, correctnessPassed: result.correctnessPassed, expiresAt: new Date(now.getTime() + 30 * 86_400_000).toISOString() };
       await putCapability(record);
-      setCapability(record);
+      updateQualification({ capability: record, progress: 1 });
       return record;
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "local_capability_failed");
+      updateQualification({ error: reason instanceof Error ? reason.message : "local_capability_failed" });
     } finally {
       worker.terminate();
-      workerRef.current = null;
-      setQualifying(false);
+      qualificationWorker = null;
+      updateQualification({ qualifying: false });
     }
   }, [models]);
 
-  return { manifest, models, progress, qualifying, capability, error, importManifest, download, cancel, probe };
+  return { manifest, models, progress, qualifying: qualification.qualifying, qualificationProgress: qualification.progress, capability: qualification.capability ?? storedCapability, error: error || qualification.error, importManifest, download, cancel, probe };
 }

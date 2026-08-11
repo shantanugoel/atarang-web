@@ -1,4 +1,7 @@
 import{expect,test}from"@playwright/test";
+import{readFileSync}from"node:fs";
+
+const browserModelManifest=JSON.parse(readFileSync(new URL("../../../../models/web/manifest.json",import.meta.url),"utf8"));
 
 function silentWav(frames=4_410){const buffer=Buffer.alloc(44+frames*4),view=new DataView(buffer.buffer,buffer.byteOffset,buffer.byteLength),text=(offset:number,value:string)=>buffer.write(value,offset,"ascii");text(0,"RIFF");view.setUint32(4,36+frames*4,true);text(8,"WAVE");text(12,"fmt ");view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,2,true);view.setUint32(24,44_100,true);view.setUint32(28,176_400,true);view.setUint16(32,4,true);view.setUint16(34,16,true);text(36,"data");view.setUint32(40,frames*4,true);return buffer}
 
@@ -16,4 +19,66 @@ test("a rejected deployment key is not saved",async({page})=>{await page.route("
 
 test("Signalsmith worklet loads from its same-origin runtime module",async({page})=>{const cspErrors:string[]=[];page.on("console",message=>{if(message.type()==="error"&&message.text().includes("Content Security Policy"))cspErrors.push(message.text())});await page.goto("/studio");await page.getByRole("button",{name:"Play",exact:true}).click();const result=await page.evaluate(async()=>{const paths=await fetch("/precache.json").then(response=>response.json()) as string[];const moduleUrl=paths.find(path=>path.includes("SignalsmithStretch"));if(!moduleUrl)return"missing";const module=await import(moduleUrl);module.default.moduleUrl=moduleUrl;const context=new AudioContext();const node=await module.default(context,{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});node.disconnect();await context.close();return"loaded"});expect(result).toBe("loaded");expect(cspErrors).toEqual([])});
 
-test("separation chooser exposes only qualified local compute and never implies an upload",async({page})=>{const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));await page.goto("/library");await page.getByLabel("Choose audio to import").setInputFiles({name:"route-check.wav",mimeType:"audio/wav",buffer:silentWav()});await expect(page).toHaveURL(/\/studio\//);await expect(page.getByText("Route Check",{exact:true})).toBeVisible();await expect(page.getByRole("button",{name:"Open separation options"})).toBeVisible();await page.getByRole("button",{name:"Open separation options"}).click();const dialog=page.getByRole("dialog",{name:"Separate this song"});await expect(dialog).toBeVisible();await expect(dialog.getByText("Local on this device")).toBeVisible();await expect(dialog.getByRole("button",{name:"Not qualified"})).toBeDisabled();await expect(dialog.getByText("Audio is never uploaded automatically.")).toBeVisible();await expect(dialog.getByRole("button",{name:"Import package"})).toBeEnabled();expect(errors).toEqual([])});
+test("separation chooser requires an installed local model and never implies an upload",async({page})=>{const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));await page.goto("/library");await page.getByLabel("Choose audio to import").setInputFiles({name:"route-check.wav",mimeType:"audio/wav",buffer:silentWav()});await expect(page).toHaveURL(/\/studio\//);await expect(page.getByText("Route Check",{exact:true})).toBeVisible();await expect(page.getByRole("button",{name:"Open separation options"})).toBeVisible();await page.getByRole("button",{name:"Open separation options"}).click();const dialog=page.getByRole("dialog",{name:"Separate this song"});await expect(dialog).toBeVisible();await expect(dialog.getByText("Local on this device")).toBeVisible();await expect(dialog.getByRole("button",{name:"Model not installed"})).toBeDisabled();await expect(dialog.getByText("Audio is never uploaded automatically.")).toBeVisible();await expect(dialog.getByRole("button",{name:"Import package"})).toBeEnabled();expect(errors).toEqual([])});
+
+test("an installed browser model works without a benchmark and an optional test survives navigation",async({page})=>{
+  await page.route("**/models/htdemucs-web-onnx/manifest.json",route=>route.fulfill({json:browserModelManifest}));
+  await page.addInitScript(()=>{
+    const NativeWorker=Worker;
+    class QualificationWorker {
+      onmessage:((event:MessageEvent)=>void)|null=null;
+      onerror:((event:ErrorEvent)=>void)|null=null;
+      constructor(url:string|URL,options?:WorkerOptions){
+        if(options?.name!=="atarang-capability-probe")return new NativeWorker(url,options) as unknown as QualificationWorker;
+      }
+      postMessage(message:{type:string;requestId:string}){
+        if(message.type==="model/cancel")return;
+        setTimeout(()=>this.onmessage?.(new MessageEvent("message",{data:{type:"capability/progress",requestId:message.requestId,progress:.42}})),50);
+        setTimeout(()=>this.onmessage?.(new MessageEvent("message",{data:{type:"capability/result",requestId:message.requestId,backend:"webgpu",status:"qualified",reason:"qualified",adapterVendor:"test",adapterArchitecture:"test",driverDescription:"test",correctnessPassed:true,rtf:.75,peakMemoryBytes:1}})),3_000);
+      }
+      terminate(){}
+    }
+    Object.defineProperty(globalThis,"Worker",{value:QualificationWorker,configurable:true});
+  });
+  await page.goto("/settings");
+  await page.evaluate(async(manifest)=>{
+    await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}});
+  },browserModelManifest);
+  await page.reload();
+  await expect(page.getByText("Ready · not benchmarked")).toBeVisible();
+  await expect(page.getByText(/installed and enabled/)).toBeVisible();
+  await page.getByRole("button",{name:"Test performance (optional)"}).click();
+  await expect(page.getByText(/Running optional performance test… 42%/)).toBeVisible();
+  await page.getByRole("link",{name:"Library"}).click();
+  await expect(page.getByRole("heading",{name:"Library"})).toBeVisible();
+  await page.getByRole("navigation",{name:"Primary navigation"}).getByRole("link",{name:"Settings"}).click();
+  await expect(page.getByText(/Running optional performance test… 42%/)).toBeVisible();
+  await expect(page.getByText("Ready · RTF 0.75")).toBeVisible();
+  await page.getByRole("link",{name:"Library"}).click();
+  await page.getByLabel("Choose audio to import").setInputFiles({name:"unbenchmarked.wav",mimeType:"audio/wav",buffer:silentWav()});
+  await page.getByRole("button",{name:"Open separation options"}).click();
+  const dialog=page.getByRole("dialog",{name:"Separate this song"});
+  await expect(dialog.getByRole("button",{name:"Start local"})).toBeEnabled();
+});
+
+test("saved separated songs enable independent stem controls",async({page})=>{
+  const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
+  const originalId="019fef4f-9c77-7a3f-94ca-ef4214a806d1",staleOriginalId="019fef4f-9c77-7a3f-94ca-ef4214a806d0",separationId="019fef4f-9c77-7a3f-94ca-ef4214a806d2",sha="a".repeat(64),now="2026-08-11T00:00:00.000Z";
+  await page.goto("/");
+  await page.evaluate(async({originalId,staleOriginalId,separationId,sha,now})=>{
+    await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction(["originals","separations"],"readwrite"),original={id:originalId,schemaVersion:1,createdAt:now,updatedAt:now,title:"Separated fixture",artist:"Test",sourceFileName:"fixture.wav",sourceMediaType:"audio/wav",byteLength:44,durationUs:1_000_000,contentSha256:sha,blobId:`sha256:${sha}`},stems=["vocals","drums","bass","other"].map(kind=>({kind,blobId:`sha256:${sha}`,sampleRate:44_100,channels:2,durationFrames:44_100,variants:[{encoding:"pcm-f32le-wav",mediaType:"audio/wav",byteLength:44,sha256:sha}]})),manifest={schema:"atarang.separation/1",separationId,original:{originalId:staleOriginalId,contentSha256:sha,sourceMediaType:"audio/wav",sampleRate:44_100,channels:2,durationFrames:44_100},model:{modelId:"htdemucs-4stem",artifactVersion:"test",artifactSha256:sha,upstream:"facebookresearch/demucs htdemucs",license:"MIT"},pipeline:{implementation:"server-pytorch",implementationVersion:"test",decodeVersion:"test",preprocessVersion:"test",segmentFrames:343_980,overlapFrames:85_995,shifts:1,postprocessVersion:"test"},stems,provenance:{mode:"local",createdAt:now}};transaction.objectStore("originals").put(original);transaction.objectStore("separations").put({id:separationId,originalId:staleOriginalId,schemaVersion:1,createdAt:now,updatedAt:now,manifest,bindings:Object.fromEntries(stems.map(stem=>[stem.kind,stem.blobId]))});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}});
+  },{originalId,staleOriginalId,separationId,sha,now});
+  expect(await page.evaluate(async()=>new Promise<number>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const get=request.result.transaction("separations").objectStore("separations").getAll();get.onsuccess=()=>resolve(get.result.length);get.onerror=()=>reject(get.error)}}))).toBe(1);
+  await page.goto("/library");
+  await page.getByRole("button",{name:"Separated 1"}).click();
+  await expect(page.getByText("Separated fixture",{exact:true})).toBeVisible();
+  await page.getByRole("link",{name:"Open"}).click();
+  const vocals=page.getByRole("slider",{name:/Vocals level/});
+  await expect(page.getByRole("complementary",{name:"Four stem mixer"})).toBeVisible();
+  await expect(vocals).toBeEnabled();
+  await vocals.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(vocals).toHaveValue("-0.5");
+  await expect(page.getByRole("slider",{name:/Master level/})).toHaveValue("0");
+  expect(errors).toEqual([]);
+});

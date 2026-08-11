@@ -252,6 +252,7 @@ async function qualify(message: QualificationMessage) {
   let finite = true;
   try {
     sessions.push(...await loadSessions(message, controller.signal));
+    self.postMessage({ type: "capability/progress", requestId: message.requestId, progress: 0.1 });
     const overlap = new RollingStemOverlapAdd();
     let segmentIndex = 0;
     const inspect = (chunks: Float32Array[]) => {
@@ -282,6 +283,7 @@ async function qualify(message: QualificationMessage) {
       const flushed = overlap.add(start, stems, length, totalFrames);
       if (flushed) inspect(flushed);
       segmentIndex++;
+      self.postMessage({ type: "capability/progress", requestId: message.requestId, progress: 0.1 + 0.85 * segmentIndex / segmentCount });
     }
     inspect(overlap.finish(totalFrames));
     const elapsedSeconds = (performance.now() - started) / 1_000;
