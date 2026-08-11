@@ -32,11 +32,13 @@ export function useSeparatedAudio(separation?: SeparationRecord, beatGrid?:BeatG
     const refresh = () => setSnapshot(next.getSnapshot());
     const unsubscribeEngine = next.subscribe(refresh);
     next.setMixer(mixerFromState(useStudioStore.getState()));
+    next.setMasterGain(10 ** (useStudioStore.getState().masterLevel / 20));
     const initial=useStudioStore.getState();next.setPractice({loopEnabled:initial.loopEnabled,loopStartUs:initial.loopStartUs,loopEndUs:initial.loopEndUs,repetitions:initial.repetitions,pauseSeconds:initial.pause});
     next.setDsp({speed:initial.speed,pitchSemitones:initial.pitch});
     next.setMetronome({enabled:initial.metronome&&Boolean(beatGridRef.current?.reliable),countIn:initial.countIn as 0|2|4,beats:beatGridRef.current?.beats??[]});
     const unsubscribeMixer = useStudioStore.subscribe((state, previous) => {
       if (state.levels !== previous.levels || state.muted !== previous.muted || state.soloed !== previous.soloed) next.setMixer(mixerFromState(state));
+      if(state.masterLevel!==previous.masterLevel)next.setMasterGain(10 ** (state.masterLevel/20));
       if(state.loopEnabled!==previous.loopEnabled||state.loopStartUs!==previous.loopStartUs||state.loopEndUs!==previous.loopEndUs||state.repetitions!==previous.repetitions||state.pause!==previous.pause)next.setPractice({loopEnabled:state.loopEnabled,loopStartUs:state.loopStartUs,loopEndUs:state.loopEndUs,repetitions:state.repetitions,pauseSeconds:state.pause});
       if(state.speed!==previous.speed||state.pitch!==previous.pitch)next.setDsp({speed:state.speed,pitchSemitones:state.pitch});
       if(state.metronome!==previous.metronome||state.countIn!==previous.countIn)next.setMetronome({enabled:state.metronome&&Boolean(beatGridRef.current?.reliable),countIn:state.countIn as 0|2|4,beats:beatGridRef.current?.beats??[]});

@@ -13,6 +13,7 @@ export interface StudioState {
   muted: Record<StemKind, boolean>;
   soloed: Record<StemKind, boolean>;
   levels: Record<StemKind, number>;
+  masterLevel: number;
   speed: number;
   pitch: number;
   repetitions: number;
@@ -29,9 +30,11 @@ export interface StudioState {
   toggleMute(stem: StemKind): void;
   toggleSolo(stem: StemKind): void;
   setLevel(stem: StemKind, level: number): void;
+  setMasterLevel(level: number): void;
   setLoopStart(timeUs: number, durationUs: number): void;
   setLoopEnd(timeUs: number, durationUs: number): void;
   toggleLoop(): void;
+  clearLoop(durationUs: number): void;
   resetPractice(durationUs: number): void;
   hydratePractice(document: PracticeStateV1, durationUs: number): void;
   adjust(key: "speed" | "pitch" | "repetitions" | "pause" | "countIn", delta: number): void;
@@ -50,14 +53,15 @@ export const useStudioStore = create<StudioState>((set) => ({
   muted: { ...stems },
   soloed: { ...stems },
   levels: { ...defaultLevels },
+  masterLevel: 0,
   speed: .8,
   pitch: 0,
   repetitions: 4,
   pause: 2,
   countIn: 2,
-  loopEnabled: true,
-  loopStartUs: 75_000_000,
-  loopEndUs: 165_000_000,
+  loopEnabled: false,
+  loopStartUs: 0,
+  loopEndUs: 30_000_000,
   togglePlaying: () => set((s) => ({ playing: !s.playing })),
   toggleRecording: () => set((s) => ({ recording: !s.recording, playing: s.recording ? s.playing : true })),
   toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
@@ -66,9 +70,11 @@ export const useStudioStore = create<StudioState>((set) => ({
   toggleMute: (stem) => set((s) => ({ muted: { ...s.muted, [stem]: !s.muted[stem] } })),
   toggleSolo: (stem) => set((s) => ({ soloed: { ...s.soloed, [stem]: !s.soloed[stem] } })),
   setLevel: (stem, level) => set((s) => ({ levels: { ...s.levels, [stem]: level } })),
+  setMasterLevel: (masterLevel) => set({ masterLevel: Math.max(-60, Math.min(0, masterLevel)) }),
   setLoopStart: (timeUs, durationUs) => set((state) => { const start = Math.max(0, Math.min(Math.round(timeUs), Math.max(0, durationUs - MIN_LOOP_US))); return { loopStartUs: start, loopEndUs: Math.min(durationUs, Math.max(state.loopEndUs, start + MIN_LOOP_US)), loopEnabled: true }; }),
   setLoopEnd: (timeUs, durationUs) => set((state) => { const end = Math.min(durationUs, Math.max(MIN_LOOP_US, Math.round(timeUs))); return { loopStartUs: Math.max(0, Math.min(state.loopStartUs, end - MIN_LOOP_US)), loopEndUs: end, loopEnabled: true }; }),
   toggleLoop: () => set((state) => ({ loopEnabled: !state.loopEnabled })),
+  clearLoop: (durationUs) => set({ loopEnabled: false, loopStartUs: 0, loopEndUs: Math.max(MIN_LOOP_US, durationUs) }),
   resetPractice: (durationUs) => set({ target:"vocals",muted:{...stems},soloed:{...stems},levels:{...defaultLevels},speed:.8,pitch:0,repetitions:4,pause:2,countIn:2,metronome:true,loopEnabled:false,loopStartUs:0,loopEndUs:Math.max(MIN_LOOP_US,durationUs) }),
   hydratePractice: (document, durationUs) => set({ target:document.target,muted:{...stems},soloed:{...stems},levels:{...document.stemGainDb},speed:document.speed,pitch:document.pitchSemitones,repetitions:document.repetitions,pause:document.pauseSeconds,countIn:document.countIn,metronome:document.metronome,loopEnabled:document.loop.enabled,loopStartUs:Math.min(document.loop.startTimeUs,Math.max(0,durationUs-MIN_LOOP_US)),loopEndUs:Math.min(durationUs,Math.max(document.loop.endTimeUs,MIN_LOOP_US)) }),
   adjust: (key, delta) => set((s) => {

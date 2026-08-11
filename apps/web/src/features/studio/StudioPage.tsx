@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DotsThreeVertical, ListBullets, MusicNotes, PencilSimple, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
-import { Link, useParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import type { OriginalRecord } from "../../storage/database";
 import { getOriginal } from "../../storage/repositories";
 import { Mixer } from "./components/Mixer";
@@ -21,6 +21,7 @@ import styles from "./StudioPage.module.css";
 
 export function StudioPage() {
   const { songId } = useParams();
+  const [searchParams,setSearchParams]=useSearchParams();
   const [original, setOriginal] = useState<OriginalRecord | null | undefined>(songId ? undefined : null);
   const toggleMetronome = useStudioStore((s) => s.toggleMetronome);
   const toggleRecording = useStudioStore((s) => s.toggleRecording);
@@ -30,12 +31,13 @@ export function StudioPage() {
   const loopStartUs = useStudioStore((s) => s.loopStartUs);
   const loopEndUs = useStudioStore((s) => s.loopEndUs);
   const speed = useStudioStore((s) => s.speed);
+  const masterLevel = useStudioStore((s) => s.masterLevel);
   const waveform = useWaveform(original ?? undefined);
   const beats=useBeatGrid(original??undefined);
   const separation=useSeparation(original??undefined);
-  const importedPlayback = useImportedAudio(separation === null ? original ?? undefined : undefined,speed);
+  const importedPlayback = useImportedAudio(separation === null ? original ?? undefined : undefined,speed,10 ** (masterLevel/20));
   const separatedPlayback = useSeparatedAudio(separation ?? undefined,beats.grid);
-  const demoPlayback = useDemoAudio(speed, original === null);
+  const demoPlayback = useDemoAudio(speed, original === null,10 ** (masterLevel/20));
   const playback = original ? (separation ? separatedPlayback : importedPlayback) : demoPlayback;
   const separationInput=useRef<HTMLInputElement>(null);
   const[separationProgress,setSeparationProgress]=useState<SeparationImportProgress|null>(null);
@@ -47,6 +49,7 @@ export function StudioPage() {
   useEffect(()=>{if(separation===null&&playback.playing&&loopEnabled&&playback.currentTimeUs>=loopEndUs)playback.seekTo(loopStartUs/1_000_000)},[loopEnabled,loopEndUs,loopStartUs,playback.currentTimeUs,playback.playing,playback.seekTo,separation]);
 
   useEffect(() => { let active = true; if (!songId) { setOriginal(null); return; } setOriginal(undefined); void getOriginal(songId).then((record) => { if (active) setOriginal(record ?? null); }); return () => { active = false; }; }, [songId]);
+  useEffect(()=>{if(original&&searchParams.get("separate")==="1"&&separation===null){setSeparationSheet(true);setSearchParams({}, {replace:true})}},[original,searchParams,separation,setSearchParams]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -82,7 +85,7 @@ export function StudioPage() {
       </section>
       <div className={styles.workspace}>
         <Mixer available={Boolean(separation)} />
-        <LyricsWorkspace originalId={original?.id} songTitle={original?.title ?? DEMO_TRACK.title} artistName={original?.artist} durationUs={original?.durationUs} currentTimeUs={playback.currentTimeUs} seekTo={playback.seekTo} />
+        <LyricsWorkspace originalId={original?.id} songTitle={original?.title ?? DEMO_TRACK.title} artistName={original?.artist} durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} seekTo={playback.seekTo} />
         <PracticeInspector durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} pitchAvailable={Boolean(separation)} beatGrid={beats.grid} adjustTempo={beats.adjustTempo} />
       </div>
       {(playback.error||playback.recordingError||separationError) && <div className={styles.playbackError} role="alert"><WarningCircle/>{playback.error||playback.recordingError||`Stem package failed: ${separationError}`}</div>}

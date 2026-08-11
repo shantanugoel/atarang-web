@@ -21,7 +21,7 @@ export interface ImportedPlayback {
   seekTo(seconds: number): void;
 }
 
-export function useImportedAudio(original?: OriginalRecord, speed = 1): ImportedPlayback {
+export function useImportedAudio(original?: OriginalRecord, speed = 1, volume = 1): ImportedPlayback {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [state, setState] = useState({ ready: false, playing: false, currentTimeUs: 0, durationUs: original?.durationUs ?? 0, error: "" });
 
@@ -32,6 +32,7 @@ export function useImportedAudio(original?: OriginalRecord, speed = 1): Imported
     const audio = new Audio();
     audio.preload = "auto";
     audio.playbackRate = speed;
+    audio.volume = volume;
     audio.preservesPitch = true;
     audioRef.current = audio;
     const update = () => setState((current) => ({ ...current, playing: !audio.paused, currentTimeUs: Math.round(audio.currentTime * 1_000_000), durationUs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000_000) : original.durationUs }));
@@ -57,6 +58,7 @@ export function useImportedAudio(original?: OriginalRecord, speed = 1): Imported
     };
   }, [original]);
   useEffect(()=>{if(audioRef.current){audioRef.current.playbackRate=speed;audioRef.current.preservesPitch=true}},[speed]);
+  useEffect(()=>{if(audioRef.current)audioRef.current.volume=Math.max(0,Math.min(1,volume))},[volume]);
 
   const toggle = useCallback(async () => {
     const audio = audioRef.current;

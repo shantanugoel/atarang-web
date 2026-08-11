@@ -60,6 +60,7 @@ export class SeparatedAudioEngine {
   #practice: PracticePlaybackSettings;
   #dsp: DspPlaybackSettings = { speed:1,pitchSemitones:0 };
   #stretchNode: StretchNode | null = null;
+  #masterNode: GainNode | null = null;
   #metronome:MetronomePlaybackSettings={enabled:false,countIn:0,beats:[]};
   #recording:null|{requestId:string;operationId:string;startedAt:string;worker:Worker;node:AudioWorkletNode;stream:MediaStream;deviceSettings:MediaTrackSettings} = null;
 
@@ -94,7 +95,8 @@ export class SeparatedAudioEngine {
       await stretch.configure({preset:"cheaper",splitComputation:true});
       await stretch.start({active:true,semitones:this.#pitchCorrection()});
       if (this.#disposed) { stretch.disconnect();if(context.state!=="closed")await context.close(); return; }
-      stretch.connect(context.destination);this.#stretchNode=stretch;
+      const master=context.createGain();master.gain.value=1;master.connect(context.destination);this.#masterNode=master;
+      stretch.connect(master);this.#stretchNode=stretch;
       await this.#loadAt(0);
     } catch (error) {
       this.#update({ error: error instanceof Error ? error.message : "Four-stem audio could not be initialized." });
@@ -124,7 +126,7 @@ export class SeparatedAudioEngine {
       processorOptions: { rings: this.#rings, generation, sourceFrame, practice:this.#practiceDescriptor(context.sampleRate),dsp:{speed:this.#dsp.speed},metronome:this.#metronomeDescriptor(context.sampleRate) },
     });
     this.#node = node;
-    node.connect(this.#stretchNode??context.destination,0,0);node.connect(context.destination,1,0);
+    node.connect(this.#stretchNode??this.#masterNode??context.destination,0,0);node.connect(this.#masterNode??context.destination,1,0);
     node.port.onmessage = ({ data }) => {
       if (data.generation !== this.#generation) return;
       if (data.type === "clock") {
@@ -192,6 +194,8 @@ export class SeparatedAudioEngine {
     this.#node?.port.postMessage({ type: "mixer", mixer });
   }
 
+  setMasterGain(gain:number){if(this.#masterNode)this.#masterNode.gain.value=Math.max(0,Math.min(3.2,gain))}
+
   #practiceDescriptor(outputSampleRate:number){return{loopEnabled:this.#practice.loopEnabled,loopStartFrame:Math.round(this.#practice.loopStartUs/1_000_000*outputSampleRate),loopEndFrame:Math.round(this.#practice.loopEndUs/1_000_000*outputSampleRate),repetitions:this.#practice.repetitions,pauseFrames:Math.round(this.#practice.pauseSeconds*outputSampleRate)}}
 
   setPractice(settings:PracticePlaybackSettings){
@@ -215,6 +219,7 @@ export class SeparatedAudioEngine {
     this.#worker?.terminate();
     this.#node?.disconnect();
     this.#stretchNode?.disconnect();
+    this.#masterNode?.disconnect();
     if(this.#recording){this.#recording.stream.getTracks().forEach(track=>track.stop());this.#recording.node.disconnect();this.#recording.worker.terminate();this.#recording=null}
     void this.#context?.close();
     this.#listeners.clear();

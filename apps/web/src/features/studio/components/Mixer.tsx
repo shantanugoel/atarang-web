@@ -29,6 +29,18 @@ export function Mixer({ available = true }: { available?: boolean }) {
           </button>
         </section>
       ))}
+      <section className={`${styles.channel} ${styles.master}`}>
+        <strong className={styles.stemName}>Master</strong>
+        <div className={styles.masterIcon}><SpeakerHigh aria-hidden /></div>
+        <div className={styles.pan}><span>L</span><span className={styles.panDial} /><span>R</span></div>
+        <div className={styles.faderWrap}>
+          <span className={styles.meter} aria-hidden />
+          <input aria-label={`Master level, ${state.masterLevel} decibels`} type="range" min="-60" max="0" step="0.5" value={state.masterLevel} onChange={(event)=>state.setMasterLevel(Number(event.target.value))}/>
+        </div>
+        <output>{state.masterLevel.toFixed(1)} dB</output>
+        <span className={styles.colorRule} />
+        <span className={styles.masterLabel}>OUTPUT</span>
+      </section>
     </aside>
   );
 }

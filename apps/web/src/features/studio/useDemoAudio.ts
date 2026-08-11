@@ -11,7 +11,7 @@ export const DEMO_TRACK = {
   sha256: "3007058b62f48ffa5740452faf5474fca288930ddfbf56b4aff96859f5f565db",
 } as const;
 
-export function useDemoAudio(speed = 1, enabled = true): ImportedPlayback {
+export function useDemoAudio(speed = 1, enabled = true, volume = 1): ImportedPlayback {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [state, setState] = useState<Pick<ImportedPlayback, "ready" | "playing" | "currentTimeUs" | "durationUs" | "error">>({ ready: false, playing: false, currentTimeUs: 0, durationUs: DEMO_TRACK.durationUs, error: "" });
 
@@ -24,6 +24,7 @@ export function useDemoAudio(speed = 1, enabled = true): ImportedPlayback {
     const audio = new Audio(new URL(demoUrl, import.meta.url).href);
     audio.preload = "auto";
     audio.playbackRate = speed;
+    audio.volume = volume;
     audio.preservesPitch = true;
     audioRef.current = audio;
     const update = () => setState((current) => ({ ...current, playing: !audio.paused, currentTimeUs: Math.round(audio.currentTime * 1_000_000), durationUs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000_000) : DEMO_TRACK.durationUs }));
@@ -50,6 +51,7 @@ export function useDemoAudio(speed = 1, enabled = true): ImportedPlayback {
       audioRef.current.preservesPitch = true;
     }
   }, [speed]);
+  useEffect(() => { if (audioRef.current) audioRef.current.volume = Math.max(0, Math.min(1, volume)); }, [volume]);
 
   const toggle = useCallback(async () => {
     const audio = audioRef.current;
