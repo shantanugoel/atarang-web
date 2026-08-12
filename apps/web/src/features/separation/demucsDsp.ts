@@ -124,6 +124,8 @@ export function demucsFrequencyToTime(freq: Float32Array) {
 
 export interface StereoStem { left: Float32Array; right: Float32Array }
 
+export type DemucsBackend = "webgpu" | "wasm";
+
 export interface DemucsQualificationMetrics {
   finite: boolean;
   emittedFrames: number;
@@ -131,7 +133,13 @@ export interface DemucsQualificationMetrics {
   energyRatio: number;
   mixtureCorrelation: number;
   rtf: number;
+  backend?: DemucsBackend;
 }
+
+// A CPU run is slow by construction, not broken. Judging it against the GPU
+// ceiling would report "unavailable" on every browser without WebGPU, which is
+// the difference between "this takes a while" and "you cannot do this here".
+const RTF_CEILING: Record<DemucsBackend, number> = { webgpu: 4, wasm: 12 };
 
 export function classifyDemucsQualification(metrics: DemucsQualificationMetrics) {
   const correctnessPassed = metrics.finite
@@ -139,7 +147,7 @@ export function classifyDemucsQualification(metrics: DemucsQualificationMetrics)
     && metrics.energyRatio >= 0.25
     && metrics.energyRatio <= 4
     && metrics.mixtureCorrelation >= 0.8;
-  const status = !correctnessPassed || metrics.rtf > 4
+  const status = !correctnessPassed || metrics.rtf > RTF_CEILING[metrics.backend ?? "webgpu"]
     ? "unavailable" as const
     : metrics.rtf <= 1.5
       ? "qualified" as const

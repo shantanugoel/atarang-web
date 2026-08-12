@@ -10,6 +10,7 @@ import {
   DEMUCS_STRIDE_FRAMES,
   prepareDemucsInput,
   RollingStemOverlapAdd,
+  type DemucsBackend,
   type StereoStem,
 } from "../features/separation/demucsDsp";
 import { ortWasmUrl } from "../generated/ort-assets";
@@ -64,6 +65,14 @@ async function fileAtPath(path: string) {
   let value = await navigator.storage.getDirectory();
   for (const part of parts) value = await value.getDirectoryHandle(part);
   return (await value.getFileHandle(name)).getFile();
+}
+
+// Model weights live in OPFS, which the browser may evict when storage is not
+// persistent, while the record saying they are installed lives in IndexedDB and
+// survives. Name that case instead of leaking a raw DOMException.
+async function modelFileAtPath(path: string) {
+  try { return await fileAtPath(path); }
+  catch (error) { throw error instanceof DOMException && error.name === "NotFoundError" ? new Error("model_integrity_failed") : error; }
 }
 
 async function copyFile(source: File, destination: FileSystemFileHandle) {
@@ -135,28 +144,41 @@ async function download(data: DownloadMessage) {
 }
 
 async function probe(data: ProbeMessage) {
-  const gpu = (navigator as Navigator & { gpu?: { requestAdapter(options?: unknown): Promise<unknown> } }).gpu;
-  if (!gpu) {
-    self.postMessage({ type: "capability/result", requestId: data.requestId, modelArtifactId: data.modelArtifactId, backend: "none", status: "unavailable", reason: "webgpu_unavailable", adapterVendor: "", adapterArchitecture: "", driverDescription: "", correctnessPassed: false });
-    return;
-  }
-  try {
-    const adapter = await gpu.requestAdapter({ powerPreference: "high-performance" }) as null | { info?: { vendor?: string; architecture?: string; description?: string }; features?: Set<string> };
-    if (!adapter) throw new Error("webgpu_adapter_unavailable");
-    const info = adapter.info ?? {};
-    self.postMessage({ type: "capability/result", requestId: data.requestId, modelArtifactId: data.modelArtifactId, backend: "webgpu", status: "candidate", reason: "model_correctness_probe_required", adapterVendor: info.vendor ?? "unknown", adapterArchitecture: info.architecture ?? "unknown", driverDescription: info.description ?? "", correctnessPassed: false, float16: adapter.features?.has("shader-f16") ?? false });
-  } catch (error) {
-    self.postMessage({ type: "capability/result", requestId: data.requestId, modelArtifactId: data.modelArtifactId, backend: "none", status: "unavailable", reason: error instanceof Error ? error.message : "webgpu_probe_failed", adapterVendor: "", adapterArchitecture: "", driverDescription: "", correctnessPassed: false });
-  }
+  // No adapter is not a dead end: the same graph runs on the WASM execution
+  // provider. It is slower, which is a warning, not a refusal.
+  const adapter = await webgpuAdapter();
+  const info = adapter?.info ?? {};
+  self.postMessage({
+    type: "capability/result",
+    requestId: data.requestId,
+    modelArtifactId: data.modelArtifactId,
+    backend: adapter ? "webgpu" : "wasm",
+    reason: adapter ? "model_correctness_probe_required" : "cpu_fallback_available",
+    adapterVendor: info.vendor ?? "unknown",
+    adapterArchitecture: info.architecture ?? "unknown",
+    driverDescription: info.description ?? "",
+    correctnessPassed: false,
+  });
 }
 
 type ModelExecutionMessage = LocalSeparationMessage | QualificationMessage;
 
+async function webgpuAdapter() {
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter(options?: unknown): Promise<unknown> } }).gpu;
+  if (!gpu) return null;
+  try { return await gpu.requestAdapter({ powerPreference: "high-performance" }) as null | { info?: { vendor?: string; architecture?: string; description?: string } }; }
+  catch { return null; }
+}
+
 async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal) {
+  const backend: DemucsBackend = (await webgpuAdapter()) ? "webgpu" : "wasm";
   ort.env.wasm.proxy = false;
-  // WebGPU performs the expensive model work. Keeping its small CPU fallback on
-  // one WASM thread avoids a nested worker-pool startup that can deadlock on
-  // otherwise WebGPU-capable browsers.
+  // Single-threaded on both backends. The threaded pool never finishes starting
+  // inside a module worker: measured here, numThreads > 1 leaves the first
+  // InferenceSession.create pending past the 90s watchdog on the CPU path,
+  // while numThreads = 1 completes the same graph at RTF 2.44.
+  // ponytail: a multi-threaded CPU path would be several times faster; it needs
+  // ORT's proxy worker rather than more threads in this one.
   ort.env.wasm.numThreads = 1;
   ort.env.wasm.wasmPaths = { wasm: new URL(ortWasmUrl, self.location.origin).href };
   ort.env.webgpu.powerPreference = "high-performance";
@@ -175,27 +197,29 @@ async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal)
       reportLoading(piece.order);
       const binding = message.model.bindings[piece.name];
       if (!binding) throw new Error("model_integrity_failed");
-      const model = new Uint8Array(await (await fileAtPath(binding)).arrayBuffer());
-      const executionProviders: ort.InferenceSession.ExecutionProviderConfig[] = piece.order === 0
-        ? [{ name: "webgpu", forceCpuNodeNames: CPU_NODES }]
-        : ["webgpu"];
+      const model = new Uint8Array(await (await modelFileAtPath(binding)).arrayBuffer());
+      const executionProviders: ort.InferenceSession.ExecutionProviderConfig[] = backend === "wasm"
+        ? ["wasm"]
+        : piece.order === 0 ? [{ name: "webgpu", forceCpuNodeNames: CPU_NODES }] : ["webgpu"];
       sessions.push(await ort.InferenceSession.create(model, {
         executionProviders,
         graphOptimizationLevel: "all",
-        preferredOutputLocation: "gpu-buffer",
+        // Handing tensors between pieces as GPU buffers is what keeps the chain
+        // off the bus. On the CPU path there is no buffer to hand over.
+        ...(backend === "webgpu" ? { preferredOutputLocation: "gpu-buffer" as const } : {}),
         enableCpuMemArena: false,
         enableMemPattern: false,
       }));
       reportLoading(piece.order + 1);
     }
-    return sessions;
+    return { sessions, backend };
   } catch (error) {
     await Promise.allSettled(sessions.map((session) => session.release()));
     throw error;
   }
 }
 
-async function runChain(message: ModelExecutionMessage, sessions: ort.InferenceSession[], left: Float32Array, right: Float32Array, signal: AbortSignal, segmentIndex: number, segmentCount: number) {
+async function runChain(message: ModelExecutionMessage, sessions: ort.InferenceSession[], backend: DemucsBackend, left: Float32Array, right: Float32Array, signal: AbortSignal, segmentIndex: number, segmentCount: number) {
   const prepared = prepareDemucsInput(left, right);
   const values = new Map<string, ort.Tensor>([
     ["mix", new ort.Tensor("float32", prepared.mix, [1, 2, DEMUCS_SEGMENT_FRAMES])],
@@ -204,7 +228,7 @@ async function runChain(message: ModelExecutionMessage, sessions: ort.InferenceS
   const remainingUses = new Map<string, number>();
   for (const piece of message.model.manifest.pieces) for (const input of piece.inputs) remainingUses.set(input, (remainingUses.get(input) ?? 0) + 1);
   const finalNames = new Set(Object.values(message.model.manifest.graphs.outputs));
-  const device = await ort.env.webgpu.device as { queue: { onSubmittedWorkDone(): Promise<void> } };
+  const device = backend === "webgpu" ? await ort.env.webgpu.device as { queue: { onSubmittedWorkDone(): Promise<void> } } : null;
   try {
     for (const piece of message.model.manifest.pieces) {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
@@ -228,7 +252,7 @@ async function runChain(message: ModelExecutionMessage, sessions: ort.InferenceS
           values.delete(input);
         }
       }
-      await device.queue.onSubmittedWorkDone();
+      await device?.queue.onSubmittedWorkDone();
       await delay(2);
       const completedPieces = segmentIndex * sessions.length + piece.order + 1;
       self.postMessage({ type: "separation/progress", requestId: message.requestId, stage: "separating", progress: 0.1 + 0.78 * completedPieces / (segmentCount * sessions.length) });
@@ -264,7 +288,8 @@ async function qualify(message: QualificationMessage) {
   let outputEnergy = 0;
   let finite = true;
   try {
-    sessions.push(...await loadSessions(message, controller.signal));
+    const loaded = await loadSessions(message, controller.signal);
+    sessions.push(...loaded.sessions);
     self.postMessage({ type: "capability/progress", requestId: message.requestId, progress: 0.1 });
     const overlap = new RollingStemOverlapAdd();
     let segmentIndex = 0;
@@ -292,7 +317,7 @@ async function qualify(message: QualificationMessage) {
         left[frame] = syntheticSample(start + frame, 0);
         right[frame] = syntheticSample(start + frame, 1);
       }
-      const stems = await runChain(message, sessions, left, right, controller.signal, segmentIndex, segmentCount);
+      const stems = await runChain(message, sessions, loaded.backend, left, right, controller.signal, segmentIndex, segmentCount);
       const flushed = overlap.add(start, stems, length, totalFrames);
       if (flushed) inspect(flushed);
       segmentIndex++;
@@ -303,11 +328,12 @@ async function qualify(message: QualificationMessage) {
     const rtf = elapsedSeconds / 30;
     const energyRatio = outputEnergy / Math.max(1e-12, inputEnergy);
     const mixtureCorrelation = dot / Math.sqrt(Math.max(1e-12, inputEnergy * outputEnergy));
-    const { correctnessPassed, status, reason } = classifyDemucsQualification({ finite, emittedFrames: emittedFrame, expectedFrames: totalFrames, energyRatio, mixtureCorrelation, rtf });
-    const device = await ort.env.webgpu.device as { adapterInfo?: { vendor?: string; architecture?: string; description?: string } };
-    const info = device.adapterInfo ?? {};
+    const { correctnessPassed, status, reason } = classifyDemucsQualification({ finite, emittedFrames: emittedFrame, expectedFrames: totalFrames, energyRatio, mixtureCorrelation, rtf, backend: loaded.backend });
+    const info = loaded.backend === "webgpu"
+      ? (await ort.env.webgpu.device as { adapterInfo?: { vendor?: string; architecture?: string; description?: string } }).adapterInfo ?? {}
+      : {};
     const peakMemoryBytes = message.model.manifest.totalBytes + DEMUCS_SEGMENT_FRAMES * 9 * 4 + 4 * 2_048 * 336 * 4 * 2;
-    self.postMessage({ type: "capability/result", requestId: message.requestId, modelArtifactId: message.modelArtifactId, backend: "webgpu", status, reason, adapterVendor: info.vendor ?? "unknown", adapterArchitecture: info.architecture ?? "unknown", driverDescription: info.description ?? "", correctnessPassed, rtf, peakMemoryBytes, mixtureCorrelation, energyRatio });
+    self.postMessage({ type: "capability/result", requestId: message.requestId, modelArtifactId: message.modelArtifactId, backend: loaded.backend, status, reason, adapterVendor: info.vendor ?? "unknown", adapterArchitecture: info.architecture ?? "unknown", driverDescription: info.description ?? "", correctnessPassed, rtf, peakMemoryBytes, mixtureCorrelation, energyRatio });
   } finally {
     await Promise.allSettled(sessions.map((session) => session.release()));
     controllers.delete(message.requestId);
@@ -402,7 +428,8 @@ async function separateLocal(message: LocalSeparationMessage) {
   let input: Input | undefined;
   try {
     for (const kind of DEMUCS_MODEL_STEMS) sinks.set(kind, new WavSink(await syncHandle(await operation.getFileHandle(`${kind}.wav`, { create: true })), message.totalFrames));
-    sessions.push(...await loadSessions(message, signal));
+    const loaded = await loadSessions(message, signal);
+    sessions.push(...loaded.sessions);
     const source = await fileAtPath(message.sourceOpfsPath);
     input = new Input({ source: new BlobSource(source, { maxCacheSize: 8 * 1024 * 1024 }), formats: ALL_FORMATS });
     const track = await input.getPrimaryAudioTrack();
@@ -414,7 +441,7 @@ async function separateLocal(message: LocalSeparationMessage) {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
       const length = Math.min(DEMUCS_SEGMENT_FRAMES, message.totalFrames - start);
       const decoded = await decodeSegment(track, start, length);
-      const stems = await runChain(message, sessions, decoded.left, decoded.right, signal, segmentIndex, segmentCount);
+      const stems = await runChain(message, sessions, loaded.backend, decoded.left, decoded.right, signal, segmentIndex, segmentCount);
       const flushed = overlap.add(start, stems, length, message.totalFrames);
       if (flushed) for (let stem = 0; stem < DEMUCS_MODEL_STEMS.length; stem++) sinks.get(DEMUCS_MODEL_STEMS[stem]!)!.write(flushed[stem]!);
       segmentIndex++;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { assertModelArtifactManifest, type ModelArtifactManifestV1 } from "@atarang/contracts";
 import { runtimeAssets } from "../../generated/runtime-assets";
 import type { CapabilityRecord, ModelRecord } from "../../storage/database";
+import { opfsPathsExist } from "../../storage/opfs";
 import { listCapabilities, listModels, putCapability, putModel } from "../../storage/repositories";
 import { uuidV7 } from "../../storage/ids";
 import { withLocalInferenceLease } from "./inferenceLease";
@@ -35,8 +36,12 @@ export function useModelManager() {
   const [error, setError] = useState("");
   const workerRef = useRef<{ worker: Worker; requestId: string } | null>(null);
   const qualification = useSyncExternalStore(subscribeQualification, qualificationSnapshot, qualificationSnapshot);
-  const refresh = useCallback(() => void Promise.all([listModels(), listCapabilities()]).then(([nextModels, capabilities]) => {
-    setModels(nextModels);
+  const refresh = useCallback(() => void Promise.all([listModels(), listCapabilities()]).then(async ([nextModels, capabilities]) => {
+    // The record lives in IndexedDB, the weights live in OPFS, and only the
+    // weights are evictable. Believing the record alone reports a model as
+    // installed long after the browser reclaimed it.
+    const installed = await Promise.all(nextModels.map((model) => opfsPathsExist(Object.values(model.bindings))));
+    setModels(nextModels.filter((_, index) => installed[index]));
     setStoredCapability(capabilities.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null);
   }), []);
   useEffect(() => {

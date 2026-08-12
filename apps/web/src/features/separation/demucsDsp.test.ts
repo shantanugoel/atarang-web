@@ -62,4 +62,16 @@ describe("bounded browser Demucs DSP", () => {
     expect(classifyDemucsQualification({ ...valid, energyRatio: 4.000_001, rtf: 1 })).toEqual({ correctnessPassed: false, status: "unavailable", reason: "correctness_failed" });
     expect(classifyDemucsQualification({ ...valid, emittedFrames: valid.expectedFrames - 1, rtf: 1 })).toEqual({ correctnessPassed: false, status: "unavailable", reason: "correctness_failed" });
   });
+
+  test("a CPU run is judged slow, not unavailable, up to its own ceiling", () => {
+    const valid = { finite: true, emittedFrames: 1_323_000, expectedFrames: 1_323_000, energyRatio: 1, mixtureCorrelation: 0.9 };
+    // 2.44 is what this machine measured on the WASM execution provider.
+    expect(classifyDemucsQualification({ ...valid, rtf: 2.44, backend: "wasm" }).status).toBe("slow");
+    expect(classifyDemucsQualification({ ...valid, rtf: 2.44, backend: "webgpu" }).status).toBe("slow");
+    expect(classifyDemucsQualification({ ...valid, rtf: 8, backend: "wasm" }).status).toBe("slow");
+    expect(classifyDemucsQualification({ ...valid, rtf: 8, backend: "webgpu" }).status).toBe("unavailable");
+    expect(classifyDemucsQualification({ ...valid, rtf: 12.000_001, backend: "wasm" }).status).toBe("unavailable");
+    // Correctness still binds on either backend.
+    expect(classifyDemucsQualification({ ...valid, mixtureCorrelation: 0.5, rtf: 3, backend: "wasm" }).correctnessPassed).toBe(false);
+  });
 });

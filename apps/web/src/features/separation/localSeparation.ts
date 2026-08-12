@@ -3,6 +3,7 @@ import { runtimeAssets } from "../../generated/runtime-assets";
 import type { BlobRecord, CapabilityRecord, ModelRecord, OperationRecord, OriginalRecord, SeparationRecord } from "../../storage/database";
 import { uuidV7 } from "../../storage/ids";
 import { withSongMutationLease } from "../../storage/mutationLease";
+import { opfsPathsExist } from "../../storage/opfs";
 import { failImportOperation, getBlob, listCapabilities, listModels, publishSeparation, startImportOperation } from "../../storage/repositories";
 import { withLocalInferenceLease } from "./inferenceLease";
 
@@ -17,12 +18,11 @@ interface WorkerComplete {
   results: { kind: StemKind; sha256: string; blobId: string; opfsPath: string; byteLength: number; mediaType: string }[];
 }
 
-export interface LocalBrowserSupport { available:boolean;reason:string }
+export interface LocalBrowserSupport { available:boolean;reason:string;backend?:"webgpu"|"wasm" }
 
 export function localSeparationErrorMessage(code:string){
   const messages:Record<string,string>={
-    webgpu_unavailable:"Browser separation needs WebGPU. Use Chrome or Edge with hardware acceleration enabled, or choose Cloud separation.",
-    webgpu_adapter_unavailable:"No usable WebGPU adapter was found. Enable hardware acceleration, restart the browser, or choose Cloud separation.",
+    cpu_fallback_available:"This browser has no WebGPU adapter, so separation runs on the processor. It works, but expect several minutes per song.",
     cross_origin_isolation_required:"Browser separation needs secure cross-origin isolation. Reload this site directly or choose Cloud separation.",
     quota_exceeded:"There is not enough browser storage for four lossless stems. Free browser storage or choose Cloud separation.",
     model_integrity_failed:"The installed browser model is incomplete. Reinstall it from Settings before trying again.",
@@ -47,7 +47,7 @@ export function probeLocalBrowser(modelArtifactId:string):Promise<LocalBrowserSu
     let finished=false;
     const finish=(result:LocalBrowserSupport)=>{if(finished)return;finished=true;clearTimeout(timeout);worker.terminate();resolve(result)};
     const timeout=window.setTimeout(()=>finish({available:false,reason:"webgpu_probe_timeout"}),10_000);
-    worker.onmessage=({data})=>{if(data.requestId!==requestId||data.type!=="capability/result")return;finish({available:data.backend==="webgpu"&&data.status!=="unavailable",reason:data.reason})};
+    worker.onmessage=({data})=>{if(data.requestId!==requestId||data.type!=="capability/result")return;finish({available:true,reason:data.reason,backend:data.backend})};
     worker.onerror=()=>finish({available:false,reason:"webgpu_probe_failed"});
     worker.postMessage({type:"capability/probe",requestId,modelArtifactId});
   });
@@ -55,7 +55,9 @@ export function probeLocalBrowser(modelArtifactId:string):Promise<LocalBrowserSu
 
 export async function qualifiedLocalRoute() {
   const now = Date.now();
-  const [models, capabilities] = await Promise.all([listModels(), listCapabilities()]);
+  const [stored, capabilities] = await Promise.all([listModels(), listCapabilities()]);
+  const present = await Promise.all(stored.map((model) => opfsPathsExist(Object.values(model.bindings))));
+  const models = stored.filter((_, index) => present[index]);
   for (const model of models) {
     const capability = capabilities.find((record) => record.modelArtifactId === model.id && record.correctnessPassed && (record.status === "qualified" || record.status === "slow") && Date.parse(record.expiresAt) > now);
     if (capability) return { model, capability };

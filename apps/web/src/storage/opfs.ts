@@ -7,6 +7,16 @@ export async function fileForOpfsPath(path: string) {
   return (await directory.getFileHandle(fileName)).getFile();
 }
 
+// OPFS is evictable when storage is not persistent, while the IndexedDB record
+// that points at it is not. Anything that reports an asset as installed has to
+// ask OPFS, not the record.
+export async function opfsPathsExist(paths: string[]) {
+  try {
+    await Promise.all(paths.map((path) => fileForOpfsPath(path)));
+    return true;
+  } catch { return false; }
+}
+
 export async function removeOpfsPath(path: string) {
   const parts = path.split("/").filter(Boolean);
   const fileName = parts.pop();
