@@ -56,3 +56,6 @@ core.*
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Local model staging produced by models/web/download.ts
+/model-files/

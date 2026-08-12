@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "atarang-preview",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--cwd", "apps/web", "preview"],
+      "port": 4173
+    }
+  ]
+}

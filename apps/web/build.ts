@@ -8,7 +8,10 @@ await rm(sourceMapDir, { recursive: true, force: true });
 await mkdir(`${outdir}/runtime`, { recursive: true });
 await mkdir(sourceMapDir, { recursive: true });
 
-const ortWasmSource = "../../node_modules/.bun/onnxruntime-web@1.27.0/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm";
+// onnxruntime-web/webgpu resolves to ort.webgpu.bundle.min.mjs, whose inlined
+// Emscripten glue is the asyncify build. Feeding it the jsep binary leaves the
+// module init promise pending forever, so every InferenceSession.create hangs.
+const ortWasmSource = "../../node_modules/.bun/onnxruntime-web@1.27.0/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm";
 const ortWasmBytes = new Uint8Array(await Bun.file(ortWasmSource).arrayBuffer());
 const ortWasmHash = new Bun.CryptoHasher("sha256").update(ortWasmBytes).digest("hex").slice(0, 16);
 const ortWasmUrl = `/runtime/ort-wasm-${ortWasmHash}.wasm`;
