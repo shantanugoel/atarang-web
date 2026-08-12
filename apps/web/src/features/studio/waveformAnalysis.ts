@@ -1,6 +1,6 @@
 import { runtimeAssets } from "../../generated/runtime-assets";
 import type { OriginalRecord, SeparationRecord, WaveformLevel, WaveformRecord } from "../../storage/database";
-import type {BeatGridV1,ChordAlgorithmV1,ChordAnalysisV1} from "@atarang/contracts";
+import {CHORD_ALGORITHMS,type BeatGridV1,type ChordAlgorithmV1,type ChordAnalysisV1} from "@atarang/contracts";
 import { chordBoundaries } from "../analysis/chordDetection";
 import { uuidV7 } from "../../storage/ids";
 import {withSongMutationLease} from "../../storage/mutationLease";
@@ -70,7 +70,10 @@ export async function ensureStemChordAnalysis(original: OriginalRecord, separati
 
 export async function ensureWaveform(original: OriginalRecord) {
   const [existing,beats,chords] = await Promise.all([getWaveform(original.id),getBeatGrid(original.id),getChordAnalysis(original.id)]);
-  if (existing?.algorithmVersion === ALGORITHM_VERSION&&beats?.document.algorithmVersion==="atarang-spectral-flux/1"&&chords?.document.algorithmVersion==="atarang-chroma/2") return existing;
+  // Any current chord algorithm counts. Requiring the mixture one exactly would
+  // re-run the whole pass on every open of a song whose chords have since been
+  // upgraded to the stem decode, and then overwrite that better answer.
+  if (existing?.algorithmVersion === ALGORITHM_VERSION&&beats?.document.algorithmVersion==="atarang-spectral-flux/1"&&CHORD_ALGORITHMS.includes(chords?.document.algorithmVersion as ChordAlgorithmV1)) return existing;
   const running = active.get(original.id); if (running) return running;
   const promise = withSongMutationLease(original.id,()=>analyze(original)).finally(() => active.delete(original.id));
   active.set(original.id, promise); return promise;
@@ -78,13 +81,13 @@ export async function ensureWaveform(original: OriginalRecord) {
 
 async function analyze(original: OriginalRecord) {
   const blob = await getBlob(original.blobId); if (!blob) throw new Error("result_integrity_failed");
-  const result = await runAnalysisWorker<{ sampleRate:number; channels:number; durationFrames:number; levels:WaveformLevel[];beatAnalysis:{bpm:number;reliability:number;reliable:boolean;beatsFrames:number[]};chordAnalysis:{segments:ChordAnalysisV1["segments"];key:string|null} }>(
+  const result = await runAnalysisWorker<{ sampleRate:number; channels:number; durationFrames:number; levels:WaveformLevel[];beatAnalysis:{bpm:number;reliability:number;reliable:boolean;beatsFrames:number[];downbeatPhase:number};chordAnalysis:{segments:ChordAnalysisV1["segments"];key:string|null} }>(
     { type:"waveform/analyze", songId:original.id, generation:1, opfsPath:blob.opfsPath },
     "waveform/complete", "waveform/error",
   );
   const now = new Date().toISOString();
   const {beatAnalysis,chordAnalysis,...waveformResult}=result,record: WaveformRecord = { id:original.id, originalId:original.id, schemaVersion:1, createdAt:now, updatedAt:now, algorithmVersion:ALGORITHM_VERSION, ...waveformResult };
-  const document:BeatGridV1={schema:"atarang.beats/1",originalId:original.id,revision:0,algorithmVersion:"atarang-spectral-flux/1",bpm:beatAnalysis.bpm,reliability:beatAnalysis.reliability,reliable:beatAnalysis.reliable,userEdited:false,beats:beatAnalysis.beatsFrames.map((frame,index)=>({timeUs:Math.round(frame/result.sampleRate*1_000_000),beatInBar:(index%4+1) as 1|2|3|4,downbeat:index%4===0})),updatedAt:now};
+  const document:BeatGridV1={schema:"atarang.beats/1",originalId:original.id,revision:0,algorithmVersion:"atarang-spectral-flux/1",bpm:beatAnalysis.bpm,reliability:beatAnalysis.reliability,reliable:beatAnalysis.reliable,userEdited:false,beats:beatAnalysis.beatsFrames.map((frame,index)=>{const beatInBar=(((index-beatAnalysis.downbeatPhase)%4+4)%4+1) as 1|2|3|4;return{timeUs:Math.round(frame/result.sampleRate*1_000_000),beatInBar,downbeat:beatInBar===1}}),updatedAt:now};
   const existingBeat=await getBeatGrid(original.id);
   const writes:Promise<unknown>[]=[putWaveform(record),putChordAnalysis({id:original.id,originalId:original.id,schemaVersion:1,createdAt:now,updatedAt:now,document:chordDocumentFrom(original.id,"atarang-chroma/2",chordAnalysis,now)})];
   if(!existingBeat?.document.userEdited)writes.push(putBeatGrid({id:original.id,originalId:original.id,schemaVersion:1,createdAt:now,updatedAt:now,document}));
