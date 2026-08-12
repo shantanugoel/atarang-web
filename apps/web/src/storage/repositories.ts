@@ -1,5 +1,5 @@
 import { database, type AtarangDatabase, type BlobRecord, type OperationRecord, type OriginalRecord, type PerformanceRecord, type SeparationRecord, type WaveformRecord } from "./database";
-import { removeOpfsPath } from "./opfs";
+import { opfsPathsExist, removeOpfsPath } from "./opfs";
 
 const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("atarang-library");
 const listeners = new Set<() => void>();
@@ -12,12 +12,28 @@ export async function getOriginal(id: string) { return (await database).get("ori
 export async function getBlob(id: string) { return (await database).get("blobs", id); }
 export async function getWaveform(originalId: string) { return (await database).get("waveforms", originalId); }
 export async function putWaveform(record: WaveformRecord) { await (await database).put("waveforms", record); notify(); }
-export async function listSeparations() { return (await database).getAll("separations"); }
+// The stems live in evictable OPFS while the record pointing at them does not.
+// A separation whose audio the browser has reclaimed is not a separation: it
+// hands the player four missing files and shows the Library a badge for stems
+// nobody can hear. Everything that reads separations goes through this.
+async function stemsPresent(record: SeparationRecord) {
+  const database_ = await database;
+  const paths = await Promise.all(Object.values(record.bindings).map(async (blobId) => (await database_.get("blobs", blobId))?.opfsPath));
+  return !paths.some((path) => !path) && opfsPathsExist(paths as string[]);
+}
+
+export async function listSeparations() {
+  const items = await (await database).getAll("separations");
+  const present = await Promise.all(items.map(stemsPresent));
+  return items.filter((_, index) => present[index]);
+}
+
 export async function getSeparationForOriginal(originalId:string,contentSha256?:string) {
   const items=await(await database).getAll("separations");
   const exact=items.find(item=>item.originalId===originalId||item.manifest.original.originalId===originalId);
   const match=exact??(contentSha256?items.find(item=>item.manifest.original.contentSha256===contentSha256):undefined);
-  return match&&match.originalId!==originalId?{...match,originalId}:match;
+  if(!match||!await stemsPresent(match))return undefined;
+  return match.originalId!==originalId?{...match,originalId}:match;
 }
 
 export async function publishSeparation(record:SeparationRecord, blobs:BlobRecord[], operation:OperationRecord) {

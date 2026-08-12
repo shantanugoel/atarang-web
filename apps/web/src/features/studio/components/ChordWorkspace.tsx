@@ -9,68 +9,43 @@ import type { UserChartV1 } from "@atarang/contracts";
 import {
   exportChordPro,
   parseChordPro,
-  simplifyChord,
   transposeChord,
 } from "../../chords/chords";
+import { bestChordShape } from "../../chords/shapes";
 import { useCharts } from "../../chords/useCharts";
 import { useChordAnalysis } from "../../chords/useChordAnalysis";
 import { uuidV7 } from "../../../storage/ids";
 import styles from "./ChordWorkspace.module.css";
 
-const SHAPES: Record<string, number[]> = {
-  C: [-1, 3, 2, 0, 1, 0],
-  G: [3, 2, 0, 0, 0, 3],
-  D: [-1, -1, 0, 2, 3, 2],
-  Em: [0, 2, 2, 0, 0, 0],
-  Am: [-1, 0, 2, 2, 1, 0],
-  F: [1, 3, 3, 2, 1, 1],
-};
+const FRET_ROWS = 5;
+
 function ChordDiagram({ chord }: { chord: string }) {
-  const shapeKey = simplifyChord(chord).split("/")[0]!,
-    shape = SHAPES[shapeKey];
+  const shape = bestChordShape(chord);
   if (!shape) return null;
+  // Open shapes are drawn from the nut; a barre form is drawn from its own
+  // fret, with the position marked, so the box stays five rows tall.
+  const base = shape.barreFret ?? 1;
   return (
     <figure className={styles.diagram}>
-      <svg
-        viewBox="0 0 92 104"
-        role="img"
-        aria-label={`${chord} guitar chord diagram`}
-      >
+      <svg viewBox="0 0 92 104" role="img" aria-label={`${chord} guitar chord diagram`}>
         <title>
-          {chord} guitar chord using the curated {shapeKey} shape
+          {chord}{shape.barreFret ? ` barre at fret ${shape.barreFret}${shape.rootString ? `, root on the ${shape.rootString}` : ""}` : " in open position"}
         </title>
+        {!shape.barreFret && <line className={styles.nut} x1="16" y1="18" x2="76" y2="18" />}
         {Array.from({ length: 6 }, (_, index) => (
-          <line
-            key={`s${index}`}
-            x1={16 + index * 12}
-            y1="18"
-            x2={16 + index * 12}
-            y2="88"
-          />
+          <line key={`s${index}`} x1={16 + index * 12} y1="18" x2={16 + index * 12} y2={18 + FRET_ROWS * 14} />
         ))}
-        {Array.from({ length: 6 }, (_, index) => (
-          <line
-            key={`f${index}`}
-            x1="16"
-            y1={18 + index * 14}
-            x2="76"
-            y2={18 + index * 14}
-          />
+        {Array.from({ length: FRET_ROWS + 1 }, (_, index) => (
+          <line key={`f${index}`} x1="16" y1={18 + index * 14} x2="76" y2={18 + index * 14} />
         ))}
-        {shape.map((fret, string) =>
-          fret > 0 ? (
-            <circle
-              key={string}
-              cx={16 + string * 12}
-              cy={18 + (fret - 0.5) * 14}
-              r="4"
-            />
-          ) : (
-            <text key={string} x={16 + string * 12} y="12">
-              {fret === 0 ? "○" : "×"}
-            </text>
-          ),
-        )}
+        {shape.barreFret && <text className={styles.position} x="6" y="30">{shape.barreFret}</text>}
+        {shape.frets.map((fret, string) => {
+          if (fret === null) return <text key={string} x={16 + string * 12} y="12">×</text>;
+          if (fret === 0) return <text key={string} x={16 + string * 12} y="12">○</text>;
+          const row = fret - base;
+          if (row < 0 || row >= FRET_ROWS) return null;
+          return <circle key={string} cx={16 + string * 12} cy={18 + (row + 0.5) * 14} r="4" />;
+        })}
       </svg>
       <figcaption>{chord}</figcaption>
     </figure>
