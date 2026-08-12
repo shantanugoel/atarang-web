@@ -154,12 +154,25 @@ type ModelExecutionMessage = LocalSeparationMessage | QualificationMessage;
 
 async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal) {
   ort.env.wasm.proxy = false;
+  // WebGPU performs the expensive model work. Keeping its small CPU fallback on
+  // one WASM thread avoids a nested worker-pool startup that can deadlock on
+  // otherwise WebGPU-capable browsers.
+  ort.env.wasm.numThreads = 1;
   ort.env.wasm.wasmPaths = { wasm: new URL(ortWasmUrl, self.location.origin).href };
   ort.env.webgpu.powerPreference = "high-performance";
   const sessions: ort.InferenceSession[] = [];
+  const reportLoading = (completed: number) => {
+    const ratio = completed / message.model.manifest.pieces.length;
+    if (message.type === "capability/qualify") {
+      self.postMessage({ type: "capability/progress", requestId: message.requestId, progress: 0.01 + 0.09 * ratio });
+    } else {
+      self.postMessage({ type: "separation/progress", requestId: message.requestId, stage: "loading_model", progress: 0.03 + 0.07 * ratio });
+    }
+  };
   try {
     for (const piece of message.model.manifest.pieces) {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
+      reportLoading(piece.order);
       const binding = message.model.bindings[piece.name];
       if (!binding) throw new Error("model_integrity_failed");
       const model = new Uint8Array(await (await fileAtPath(binding)).arrayBuffer());
@@ -173,7 +186,7 @@ async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal)
         enableCpuMemArena: false,
         enableMemPattern: false,
       }));
-      self.postMessage({ type: "separation/progress", requestId: message.requestId, stage: "loading_model", progress: (piece.order + 1) / (message.model.manifest.pieces.length * 10) });
+      reportLoading(piece.order + 1);
     }
     return sessions;
   } catch (error) {

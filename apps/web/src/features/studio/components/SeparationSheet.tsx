@@ -2,25 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { Cloud, FileArrowUp, Gauge, HardDrives, SpinnerGap, X } from "@phosphor-icons/react";
 import type { OriginalRecord } from "../../../storage/database";
 import { getCloudConfiguration, runCloudSeparation } from "../../separation/cloudClient";
-import { qualifiedLocalRoute, runLocalSeparation } from "../../separation/localSeparation";
+import { localSeparationErrorMessage, probeLocalBrowser, qualifiedLocalRoute, runLocalSeparation, type LocalBrowserSupport } from "../../separation/localSeparation";
 import styles from "./SeparationSheet.module.css";
 
-interface Props { original: OriginalRecord; onClose(): void; onImportPackage(): void; onCloudPackage(files: File[], purge: () => Promise<void>): Promise<void> }
+interface Props { original: OriginalRecord;replacing:boolean; onClose(): void; onImportPackage(): void; onCloudPackage(files: File[], purge: () => Promise<void>): Promise<void>;onLocalFailure(message:string):void }
 type Progress = { stage: string; progress: number };
 type LocalRoute = Awaited<ReturnType<typeof qualifiedLocalRoute>>;
 
-export function SeparationSheet({ original, onClose, onImportPackage, onCloudPackage }: Props) {
+export function SeparationSheet({ original,replacing, onClose, onImportPackage, onCloudPackage,onLocalFailure }: Props) {
   const config = getCloudConfiguration();
   const [confirm, setConfirm] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [localRoute, setLocalRoute] = useState<LocalRoute>(null);
   const [routeChecked, setRouteChecked] = useState(false);
+  const [localSupport,setLocalSupport]=useState<LocalBrowserSupport|null>(null);
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
   const sheet = useRef<HTMLElement>(null);
   const close = () => { if (!progress) onClose(); };
 
-  useEffect(() => { let active = true; void qualifiedLocalRoute().then((route) => { if (active) { setLocalRoute(route); setRouteChecked(true); } }); return () => { active = false; }; }, []);
+  useEffect(() => { let active = true; void qualifiedLocalRoute().then(async(route) => {if(!active)return;setLocalRoute(route);const support=route?await probeLocalBrowser(route.model.id):null;if(active){setLocalSupport(support);setRouteChecked(true)}},()=>{if(active){setError("Browser separation availability could not be checked.");setRouteChecked(true)}}); return () => { active = false; controller.current?.abort(new Error("cancelled")); }; }, []);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     sheet.current?.focus();
@@ -56,24 +57,25 @@ export function SeparationSheet({ original, onClose, onImportPackage, onCloudPac
   };
 
   const startLocal = async () => {
-    if (!localRoute) return;
+    if (!localRoute||!localSupport?.available) return;
     setError("");
+    onLocalFailure("");
     const active = new AbortController();
     controller.current = active;
     try {
       await runLocalSeparation(original, localRoute.model, localRoute.capability, setProgress, active.signal);
       onClose();
     } catch (value) {
-      setError(active.signal.aborted ? "Local separation cancelled; no result was published." : value instanceof Error ? value.message : "separation_failed");
+      const message=active.signal.aborted?"Local separation cancelled; no result was published.":localSeparationErrorMessage(value instanceof Error?value.message:"separation_failed");setError(message);onLocalFailure(message);
     } finally {
       setProgress(null);
       controller.current = null;
     }
   };
 
-  return <div className={styles.backdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section ref={sheet} tabIndex={-1} className={styles.sheet} role="dialog" aria-modal="true" aria-labelledby="separation-title"><header><div><h2 id="separation-title">{confirm ? "Confirm cloud upload" : "Separate this song"}</h2><p>{confirm ? "Review exactly what leaves this browser." : "Choose where the verified four-stem result comes from."}</p></div><button aria-label="Close separation options" onClick={close} disabled={Boolean(progress)}><X /></button></header>
+  return <div className={styles.backdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section ref={sheet} tabIndex={-1} className={styles.sheet} role="dialog" aria-modal="true" aria-labelledby="separation-title"><header><div><h2 id="separation-title">{confirm ? "Confirm cloud upload" : replacing?"Separate this song again":"Separate this song"}</h2><p>{confirm ? "Review exactly what leaves this browser." : replacing?"The current stems stay available until all four replacements are verified.":"Choose where the verified four-stem result comes from."}</p></div><button aria-label="Close separation options" onClick={close} disabled={Boolean(progress)}><X /></button></header>
     {progress ? <div className={styles.consent}><div className={styles.running} role="status"><SpinnerGap />{progress.stage.replaceAll("_", " ")} · {Math.round(progress.progress * 100)}%<button onClick={() => controller.current?.abort(new Error("cancelled"))}>Cancel</button></div><p>The operation publishes all four verified stems atomically. Cancelling leaves the current Library item unchanged.</p></div>
       : confirm && config ? <div className={styles.consent}><Cloud /><dl><div><dt>Server</dt><dd>{config.origin}</dd></div><div><dt>Audio upload</dt><dd>{(original.byteLength / 1_000_000).toFixed(1)} MB</dd></div><div><dt>Model</dt><dd>HTDemucs · four stems</dd></div><div><dt>Input deletion</dt><dd>Immediately after verified packaging</dd></div><div><dt>Result expiry</dt><dd>24 hours, or immediately after local import</dd></div></dl><p><strong>This audio will leave this browser.</strong> The deployment key is kept only for this browser session.</p><div className={styles.consentActions}><button onClick={() => setConfirm(false)}>Back</button><button className={styles.confirm} onClick={() => void startCloud()}>Confirm upload</button></div>{error && <p role="alert">Cloud job failed safely: {error}</p>}</div>
-        : <div className={styles.routes}><article aria-disabled={!localRoute}><Gauge /><div><strong>Local on this device</strong><span>{!routeChecked ? "Checking for an installed browser model…" : localRoute?.capability ? `${localRoute.capability.status === "slow" ? "Cloud is recommended, but Local is available" : "Benchmarked for Local"} at measured RTF ${localRoute.capability.rtf?.toFixed(2)}. Audio stays in this browser.` : localRoute ? "The verified browser model is installed and ready. The optional performance test in Settings is not required." : "Install the verified browser model in Settings to use local separation."}</span></div><button disabled={!localRoute} onClick={() => void startLocal()}>{localRoute ? "Start local" : routeChecked ? "Model not installed" : "Checking…"}</button></article><article aria-disabled={!config}><Cloud /><div><strong>Cloud on your server</strong><span>{config ? `Configured for ${config.origin}. A separate consent screen appears before every upload.` : "Configure a server and session-only deployment key in Settings. Audio is never uploaded automatically."}</span></div><button disabled={!config} onClick={() => setConfirm(true)}>{config ? "Review upload" : "Unavailable"}</button></article><article><HardDrives /><div><strong>Verified package</strong><span>Import a canonical manifest plus vocals, drums, bass, and other files generated elsewhere.</span></div><button onClick={onImportPackage}><FileArrowUp />Import package</button></article>{error && <p role="alert">Separation failed safely: {error}</p>}</div>}
-    <footer>An installed model can run immediately. The optional device test measures performance and is remembered for 30 days.</footer></section></div>;
+        : <div className={styles.routes}><article aria-disabled={!localRoute||!localSupport?.available}><Gauge /><div><strong>Local on this device</strong><span>{!routeChecked?"Checking the installed model and WebGPU…":!localRoute?"Install the verified browser model in Settings to use local separation.":!localSupport?.available?localSeparationErrorMessage(localSupport?.reason??"webgpu_probe_failed"):localRoute.capability?`${localRoute.capability.status==="slow"?"Cloud is recommended, but Local is available":"Benchmarked for Local"} at measured RTF ${localRoute.capability.rtf?.toFixed(2)}. Audio stays in this browser.`:"WebGPU is ready. The optional performance test in Settings is not required."}</span></div><button disabled={!localRoute||!localSupport?.available} onClick={() => void startLocal()}>{!routeChecked?"Checking…":!localRoute?"Model not installed":localSupport?.available?"Start local":"WebGPU unavailable"}</button></article><article aria-disabled={!config}><Cloud /><div><strong>Cloud on your server</strong><span>{config ? `Configured for ${config.origin}. A separate consent screen appears before every upload.` : "Configure a server and session-only deployment key in Settings. Audio is never uploaded automatically."}</span></div><button disabled={!config} onClick={() => setConfirm(true)}>{config ? "Review upload" : "Unavailable"}</button></article><article><HardDrives /><div><strong>Verified package</strong><span>Import a canonical manifest plus vocals, drums, bass, and other files generated elsewhere.</span></div><button onClick={onImportPackage}><FileArrowUp />Import package</button></article>{error && <p role="alert">{error}</p>}</div>}
+    <footer>An installed model runs after a quick WebGPU check. The optional device test measures performance and is remembered for 30 days.</footer></section></div>;
 }

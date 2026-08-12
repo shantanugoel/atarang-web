@@ -5,6 +5,6 @@ export const runtimeAssets = {
   "ioWorker": "/runtime/io.worker-76b0tdb5.js",
   "analysisWorker": "/runtime/analysis.worker-qpb3973v.js",
   "recordingWorker": "/runtime/recording.worker-f885b2y1.js",
-  "inferenceWorker": "/runtime/inference.worker-a6448244.js",
+  "inferenceWorker": "/runtime/inference.worker-68340z1m.js",
   "serviceWorker": "/runtime/service-worker-65x9zkk5.js"
 } as const;

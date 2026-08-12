@@ -4,12 +4,13 @@ import { runtimeAssets } from "../../generated/runtime-assets";
 import type { CapabilityRecord, ModelRecord } from "../../storage/database";
 import { listCapabilities, listModels, putCapability, putModel } from "../../storage/repositories";
 import { uuidV7 } from "../../storage/ids";
+import { withLocalInferenceLease } from "./inferenceLease";
 
 type Progress = { completedBytes: number; totalBytes: number; piece: number };
 type QualificationState = { qualifying: boolean; progress: number; capability: CapabilityRecord | null; error: string };
 
 let qualificationState: QualificationState = { qualifying: false, progress: 0, capability: null, error: "" };
-let qualificationWorker: { worker: Worker; requestId: string } | null = null;
+let qualificationWorker: { worker: Worker; requestId: string; cancel(): void } | null = null;
 const qualificationListeners = new Set<() => void>();
 const qualificationSnapshot = () => qualificationState;
 const subscribeQualification = (listener: () => void) => { qualificationListeners.add(listener); return () => qualificationListeners.delete(listener); };
@@ -97,7 +98,7 @@ export function useModelManager() {
   const cancel = useCallback(() => {
     const current = workerRef.current;
     if (current) current.worker.postMessage({ type: "model/cancel", requestId: current.requestId });
-    else if (qualificationWorker) qualificationWorker.worker.postMessage({ type: "model/cancel", requestId: qualificationWorker.requestId });
+    else if (qualificationWorker) qualificationWorker.cancel();
   }, []);
 
   const probe = useCallback(async (modelArtifactId: string) => {
@@ -107,19 +108,36 @@ export function useModelManager() {
     if (!model) { setError("model_integrity_failed"); return; }
     const worker = new Worker(runtimeAssets.inferenceWorker, { type: "module", name: "atarang-capability-probe" });
     const requestId = uuidV7();
-    qualificationWorker = { worker, requestId };
     updateQualification({ qualifying: true, progress: 0, error: "" });
     try {
-      const result = await new Promise<any>((resolve, reject) => {
+      const result = await withLocalInferenceLease(() => new Promise<any>((resolve, reject) => {
+        let settled = false;
+        let watchdog = window.setTimeout(() => finish(reject, new Error("local_worker_stalled")), 90_000);
+        const finish = (callback: (value: any) => void, value: any) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(watchdog);
+          callback(value);
+        };
+        const progress = () => {
+          if (settled) return;
+          window.clearTimeout(watchdog);
+          watchdog = window.setTimeout(() => finish(reject, new Error("local_worker_stalled")), 90_000);
+        };
+        qualificationWorker = { worker, requestId, cancel: () => {
+          worker.postMessage({ type: "model/cancel", requestId });
+          finish(reject, new DOMException("Cancelled", "AbortError"));
+        } };
         worker.onmessage = ({ data }) => {
           if (data.requestId !== requestId) return;
+          progress();
           if (data.type === "capability/progress") updateQualification({ progress: data.progress });
-          if (data.type === "capability/result") resolve(data);
-          if (data.type === "capability/error") reject(new Error(data.code));
+          if (data.type === "capability/result") finish(resolve, data);
+          if (data.type === "capability/error") finish(reject, new Error(data.code));
         };
-        worker.onerror = () => reject(new Error("local_capability_failed"));
+        worker.onerror = () => finish(reject, new Error("local_capability_failed"));
         worker.postMessage({ type: "capability/qualify", requestId, modelArtifactId, model: { manifest: model.manifest, bindings: model.bindings } });
-      });
+      }));
       const now = new Date();
       const identity = platform();
       const id = [modelArtifactId, "1.27.0", identity.browserMajor, identity.os, result.adapterVendor, result.adapterArchitecture, result.driverDescription].join(":");
@@ -128,7 +146,7 @@ export function useModelManager() {
       updateQualification({ capability: record, progress: 1 });
       return record;
     } catch (reason) {
-      updateQualification({ error: reason instanceof Error ? reason.message : "local_capability_failed" });
+      updateQualification({ error: reason instanceof DOMException && reason.name === "AbortError" ? "cancelled" : reason instanceof Error ? reason.message : "local_capability_failed" });
     } finally {
       worker.terminate();
       qualificationWorker = null;

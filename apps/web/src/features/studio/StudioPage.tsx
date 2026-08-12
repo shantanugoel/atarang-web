@@ -49,7 +49,7 @@ export function StudioPage() {
   useEffect(()=>{if(separation===null&&playback.playing&&loopEnabled&&playback.currentTimeUs>=loopEndUs)playback.seekTo(loopStartUs/1_000_000)},[loopEnabled,loopEndUs,loopStartUs,playback.currentTimeUs,playback.playing,playback.seekTo,separation]);
 
   useEffect(() => { let active = true; if (!songId) { setOriginal(null); return; } setOriginal(undefined); void getOriginal(songId).then((record) => { if (active) setOriginal(record ?? null); }); return () => { active = false; }; }, [songId]);
-  useEffect(()=>{if(original&&searchParams.get("separate")==="1"&&separation===null){setSeparationSheet(true);setSearchParams({}, {replace:true})}},[original,searchParams,separation,setSearchParams]);
+  useEffect(()=>{if(original&&searchParams.get("separate")==="1"){setSeparationError("");setSeparationSheet(true);setSearchParams({}, {replace:true})}},[original,searchParams,setSearchParams]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -77,7 +77,7 @@ export function StudioPage() {
         <span className={styles.songIcon}><MusicNotes weight="fill" aria-hidden /></span>
         <div><strong>{original?.title ?? DEMO_TRACK.title}</strong><span>{original?.artist ?? `${DEMO_TRACK.artist} · CC0 demo`}</span></div>
         <div className={styles.songActions}>
-          <button className="icon-button" aria-label={imported&&separation===null?"Open separation options":"Show track list"} onClick={()=>imported&&separation===null?setSeparationSheet(true):undefined}><ListBullets /></button>
+          <button className="icon-button" aria-label={imported?separation?"Separate song again":"Separate song":"Show track list"} onClick={()=>{if(imported){setSeparationError("");setSeparationSheet(true)}}}><ListBullets /></button>
           {imported&&<input ref={separationInput} className="sr-only" type="file" multiple accept="application/json,.json,audio/*,.flac" aria-label="Choose manifest and four stem files" onChange={event=>void attachSeparation(event.target.files)}/>}
           <button className="icon-button" aria-label="Edit song"><PencilSimple /></button>
           <button className="icon-button" aria-label="More song actions"><DotsThreeVertical /></button>
@@ -88,10 +88,10 @@ export function StudioPage() {
         <LyricsWorkspace originalId={original?.id} songTitle={original?.title ?? DEMO_TRACK.title} artistName={original?.artist} durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} seekTo={playback.seekTo} />
         <PracticeInspector durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} pitchAvailable={Boolean(separation)} beatGrid={beats.grid} adjustTempo={beats.adjustTempo} />
       </div>
-      {(playback.error||playback.recordingError||separationError) && <div className={styles.playbackError} role="alert"><WarningCircle/>{playback.error||playback.recordingError||`Stem package failed: ${separationError}`}</div>}
+      {(playback.error||playback.recordingError||separationError) && <div className={styles.playbackError} role="alert"><WarningCircle/>{playback.error||playback.recordingError||separationError}</div>}
       {separationProgress&&<div className={styles.separationProgress} role="status"><SpinnerGap className={styles.spin}/>{separationProgress.phase==="preflight"?"Checking four-stem package…":separationProgress.phase==="writing"?"Verifying and storing stems…":"Publishing separation…"}</div>}
       <Transport importedPlayback={playback} waveform={waveform.waveform} waveformStatus={imported ? waveform.status : "ready"} beatGrid={beats.grid} />
-      {separationSheet&&original&&<SeparationSheet original={original} onClose={()=>setSeparationSheet(false)} onImportPackage={()=>{setSeparationSheet(false);separationInput.current?.click()}} onCloudPackage={attachCloudSeparation}/>}
+      {separationSheet&&original&&<SeparationSheet original={original} replacing={Boolean(separation)} onClose={()=>setSeparationSheet(false)} onImportPackage={()=>{setSeparationSheet(false);separationInput.current?.click()}} onCloudPackage={attachCloudSeparation} onLocalFailure={setSeparationError}/>}
     </div>
   );
 }
