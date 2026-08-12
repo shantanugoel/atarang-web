@@ -128,7 +128,8 @@ export function AnalysisChordRail({
           </div>
         )}
         <em>
-          {analysis.key ?? "Unknown key"} · {analysis.segments.length} changes
+          {analysis.key ? `Key of ${analysis.key}` : "Key unclear"} ·{" "}
+          {analysis.segments.length === 1 ? "1 chord" : `${analysis.segments.length} chords`}
         </em>
       </header>
       <div className={styles.chordTimeline}>
@@ -234,12 +235,12 @@ export function ChordWorkspace({
       <div className={styles.demo} role="tabpanel">
         <strong>Chord timeline</strong>
         <p>Corrections stay separate from generated analysis.</p>
-        <div>
+        <div aria-hidden>
           {["Em", "C", "G", "D", "Em", "C", "G", "D"].map((value, index) => (
-            <button key={index}>
+            <span key={index}>
               {value}
               <small>{index + 1}</small>
-            </button>
+            </span>
           ))}
         </div>
       </div>

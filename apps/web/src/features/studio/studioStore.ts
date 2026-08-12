@@ -54,7 +54,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   soloed: { ...stems },
   levels: { ...defaultLevels },
   masterLevel: 0,
-  speed: .8,
+  speed: 1,
   pitch: 0,
   repetitions: 4,
   pause: 2,
@@ -75,7 +75,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   setLoopEnd: (timeUs, durationUs) => set((state) => { const end = Math.min(durationUs, Math.max(MIN_LOOP_US, Math.round(timeUs))); return { loopStartUs: Math.max(0, Math.min(state.loopStartUs, end - MIN_LOOP_US)), loopEndUs: end, loopEnabled: true }; }),
   toggleLoop: () => set((state) => ({ loopEnabled: !state.loopEnabled })),
   clearLoop: (durationUs) => set({ loopEnabled: false, loopStartUs: 0, loopEndUs: Math.max(MIN_LOOP_US, durationUs) }),
-  resetPractice: (durationUs) => set({ target:"vocals",muted:{...stems},soloed:{...stems},levels:{...defaultLevels},speed:.8,pitch:0,repetitions:4,pause:2,countIn:2,metronome:true,loopEnabled:false,loopStartUs:0,loopEndUs:Math.max(MIN_LOOP_US,durationUs) }),
+  resetPractice: (durationUs) => set({ target:"vocals",muted:{...stems},soloed:{...stems},levels:{...defaultLevels},speed:1,pitch:0,repetitions:4,pause:2,countIn:2,metronome:true,loopEnabled:false,loopStartUs:0,loopEndUs:Math.max(MIN_LOOP_US,durationUs) }),
   hydratePractice: (document, durationUs) => set({ target:document.target,muted:{...stems},soloed:{...stems},levels:{...document.stemGainDb},speed:document.speed,pitch:document.pitchSemitones,repetitions:document.repetitions,pause:document.pauseSeconds,countIn:document.countIn,metronome:document.metronome,loopEnabled:document.loop.enabled,loopStartUs:Math.min(document.loop.startTimeUs,Math.max(0,durationUs-MIN_LOOP_US)),loopEndUs:Math.min(durationUs,Math.max(document.loop.endTimeUs,MIN_LOOP_US)) }),
   adjust: (key, delta) => set((s) => {
     const ranges = { speed: [.5, 1, .05], pitch: [-12, 12, 1], repetitions: [1, 999, 1], pause: [0, 10, 1], countIn: [0, 4, 2] } as const;

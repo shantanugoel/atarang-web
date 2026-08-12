@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DotsThreeVertical, ListBullets, MusicNotes, PencilSimple, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
+import { ListBullets, MusicNotes, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
 import { Link, useParams, useSearchParams } from "react-router";
 import type { OriginalRecord } from "../../storage/database";
 import { getOriginal } from "../../storage/repositories";
@@ -43,6 +43,8 @@ export function StudioPage() {
   const separationInput=useRef<HTMLInputElement>(null);
   const[separationProgress,setSeparationProgress]=useState<SeparationImportProgress|null>(null);
   const[separationSheet,setSeparationSheet]=useState(false);
+  // Only consulted below 1024px, where the three panels no longer fit together.
+  const[pane,setPane]=useState<"mix"|"song"|"practice">("song");
   const[separationError,setSeparationError]=useState("");
   const playbackToggle = playback.toggle;
   const playbackSeekBy = playback.seekBy;
@@ -83,18 +85,19 @@ export function StudioPage() {
         <div className={styles.songActions}>
           <button className="icon-button" aria-label={imported?separation?"Separate song again":"Separate song":"Show track list"} onClick={()=>{if(imported){setSeparationError("");setSeparationSheet(true)}}}><ListBullets /></button>
           {imported&&<input ref={separationInput} className="sr-only" type="file" multiple accept="application/json,.json,audio/*,.flac" aria-label="Choose manifest and four stem files" onChange={event=>void attachSeparation(event.target.files)}/>}
-          <button className="icon-button" aria-label="Edit song"><PencilSimple /></button>
-          <button className="icon-button" aria-label="More song actions"><DotsThreeVertical /></button>
         </div>
       </section>
-      <div className={styles.workspace}>
+      <nav className={styles.paneSwitch} aria-label="Studio panel">
+        {(["mix","song","practice"] as const).map(item=><button key={item} aria-pressed={pane===item} onClick={()=>setPane(item)}>{item[0]!.toUpperCase()+item.slice(1)}</button>)}
+      </nav>
+      <div className={styles.workspace} data-pane={pane}>
         <Mixer available={Boolean(separation)} />
         <LyricsWorkspace originalId={original?.id} songTitle={original?.title ?? DEMO_TRACK.title} artistName={original?.artist} durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} seekTo={playback.seekTo} />
-        <PracticeInspector durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} pitchAvailable={Boolean(separation)} beatGrid={beats.grid} adjustTempo={beats.adjustTempo} />
+        <PracticeInspector durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} stemsAvailable={Boolean(separation)} beatGrid={beats.grid} adjustTempo={beats.adjustTempo} />
       </div>
       {(playback.error||playback.recordingError||separationError) && <div className={styles.playbackError} role="alert"><WarningCircle/>{playback.error||playback.recordingError||separationError}</div>}
       {separationProgress&&<div className={styles.separationProgress} role="status"><SpinnerGap className={styles.spin}/>{separationProgress.phase==="preflight"?"Checking four-stem package…":separationProgress.phase==="writing"?"Verifying and storing stems…":"Publishing separation…"}</div>}
-      <Transport importedPlayback={playback} waveform={waveform.waveform} waveformStatus={imported ? waveform.status : "ready"} beatGrid={beats.grid} />
+      <Transport importedPlayback={playback} waveform={waveform.waveform} waveformStatus={imported ? waveform.status : "ready"} beatGrid={beats.grid} stemsAvailable={Boolean(separation)} />
       {separationSheet&&original&&<SeparationSheet original={original} replacing={Boolean(separation)} onClose={()=>setSeparationSheet(false)} onImportPackage={()=>{setSeparationSheet(false);separationInput.current?.click()}} onCloudPackage={attachCloudSeparation} onLocalFailure={setSeparationError}/>}
     </div>
   );

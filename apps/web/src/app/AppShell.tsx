@@ -1,4 +1,4 @@
-import { GearSix, Question, FolderOpen, MusicNotesSimple } from "@phosphor-icons/react";
+import { GearSix, FolderOpen, MusicNotesSimple } from "@phosphor-icons/react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import {useEffect} from "react";
 import {runIntegrityScan} from "../storage/integrity";
@@ -30,8 +30,7 @@ export function AppShell() {
           ))}
         </nav>
         <div className={styles.actions}>
-          {inStudio && <button className="icon-button" aria-label="Open file"><FolderOpen aria-hidden /></button>}
-          <button className="icon-button" aria-label="Keyboard shortcuts"><Question aria-hidden /></button>
+          {inStudio && <NavLink to="/library" className="icon-button" aria-label="Open another song"><FolderOpen aria-hidden /></NavLink>}
           <NavLink to="/settings" className="icon-button" aria-label="Settings"><GearSix aria-hidden /></NavLink>
         </div>
       </header>

@@ -1,5 +1,9 @@
 .inspector { min-width: 0; min-height: 0; overflow: auto; padding: 0 18px 24px; border-left: 1px solid var(--line-strong); background: var(--surface-1); }
-.inspector header { height: 50px; display: flex; align-items: end; border-bottom: 1px solid var(--line-strong); }
+.inspector header { display: grid; border-bottom: 1px solid var(--line-strong); }
+.notice { margin: 0 0 10px; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+/* A panel that scrolls with no scrollbar reads as clipped, so the last row is
+   allowed to show through the fade instead of ending flush at the edge. */
+.inspector::after { content: ""; position: sticky; bottom: -24px; display: block; height: 26px; margin: -26px -18px 0; background: linear-gradient(transparent, var(--surface-1)); pointer-events: none; }
 .inspector h2 { position: relative; min-width: 92px; height: 42px; display: flex; align-items: center; margin: 0; color: var(--accent-soft); font-size: 14px; }
 .inspector h2::after { content: ""; position: absolute; inset: auto 0 -1px; height: 3px; background: var(--accent); }
 .loop { padding: 17px 0 18px; border-bottom: 1px solid var(--line); }

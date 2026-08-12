@@ -17,9 +17,7 @@ export function Mixer({ available = true }: { available?: boolean }) {
             <button disabled={!available} onClick={() => state.toggleSolo(key)} aria-pressed={state.soloed[key]} aria-label={`Solo ${label}`}>S</button>
             <button disabled={!available} onClick={() => state.toggleMute(key)} aria-pressed={state.muted[key]} aria-label={`Mute ${label}`}>M</button>
           </div>
-          <div className={styles.pan}><span>L</span><span className={styles.panDial} /><span>R</span></div>
           <div className={styles.faderWrap}>
-            <span className={styles.meter} aria-hidden />
             <input disabled={!available} aria-label={`${label} level, ${state.levels[key]} decibels`} type="range" min="-60" max="10" step="0.5" value={state.levels[key]} onChange={(e) => state.setLevel(key, Number(e.target.value))} />
           </div>
           <output>{state.levels[key].toFixed(1)} dB</output>
@@ -32,9 +30,7 @@ export function Mixer({ available = true }: { available?: boolean }) {
       <section className={`${styles.channel} ${styles.master}`}>
         <strong className={styles.stemName}>Master</strong>
         <div className={styles.masterIcon}><SpeakerHigh aria-hidden /></div>
-        <div className={styles.pan}><span>L</span><span className={styles.panDial} /><span>R</span></div>
         <div className={styles.faderWrap}>
-          <span className={styles.meter} aria-hidden />
           <input aria-label={`Master level, ${state.masterLevel} decibels`} type="range" min="-60" max="0" step="0.5" value={state.masterLevel} onChange={(event)=>state.setMasterLevel(Number(event.target.value))}/>
         </div>
         <output>{state.masterLevel.toFixed(1)} dB</output>

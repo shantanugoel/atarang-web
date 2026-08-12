@@ -23,7 +23,7 @@ function displayPeaks(waveform: WaveformRecord | null | undefined, target = 128)
   return raw.map((peak) => Math.max(3, Math.min(52, 3 + peak / maximum * 46)));
 }
 
-export function Transport({ importedPlayback, waveform, waveformStatus = "idle",beatGrid }: { importedPlayback?: ImportedPlayback | undefined; waveform?: WaveformRecord | null | undefined; waveformStatus?: "idle"|"analyzing"|"ready"|"error";beatGrid?:BeatGridV1|null|undefined }) {
+export function Transport({ importedPlayback, waveform, waveformStatus = "idle",beatGrid,stemsAvailable = false }: { importedPlayback?: ImportedPlayback | undefined; waveform?: WaveformRecord | null | undefined; waveformStatus?: "idle"|"analyzing"|"ready"|"error";beatGrid?:BeatGridV1|null|undefined;stemsAvailable?:boolean }) {
   const state = useStudioStore();
   const playing = importedPlayback?.playing ?? state.playing;
   const currentTimeUs = importedPlayback?.currentTimeUs ?? 102_000_000;
@@ -63,7 +63,7 @@ export function Transport({ importedPlayback, waveform, waveformStatus = "idle",
       </div>
       <div className={styles.secondary}>
         <button className={state.loopEnabled ? styles.active : ""} onClick={state.toggleLoop} aria-label={state.loopEnabled ? "Disable loop" : "Enable loop"} aria-pressed={state.loopEnabled}><Repeat /></button>
-        <button className={state.metronome ? styles.active : ""} onClick={state.toggleMetronome} aria-label="Toggle metronome" aria-pressed={state.metronome}><Metronome /></button>
+        <button disabled={imported&&!stemsAvailable} title={imported&&!stemsAvailable?"The click track plays with four-stem playback. Separate this song to enable it.":undefined} className={state.metronome ? styles.active : ""} onClick={state.toggleMetronome} aria-label="Toggle metronome" aria-pressed={state.metronome}><Metronome /></button>
         <button disabled={imported&&!importedPlayback?.toggleRecording} title={imported&&!importedPlayback?.toggleRecording?"Import a four-stem package to record aligned mic and backing streams.":undefined} className={recording ? styles.recording : ""} onClick={()=>importedPlayback?.toggleRecording?void importedPlayback.toggleRecording():state.toggleRecording()} aria-label={recording ? "Stop recording" : "Record"} aria-pressed={recording}><Record weight={recording ? "fill" : "regular"}/></button>
       </div>
     </div>

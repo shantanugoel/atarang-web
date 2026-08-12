@@ -6,18 +6,36 @@
 .songbar strong { font-family: var(--font-display); font-size: 21px; letter-spacing: .01em; }
 .songbar span { color: var(--text-muted); }
 .songActions { display: flex; align-items: center; margin-left: auto; }
-.workspace { min-height: 0; display: grid; grid-template-columns: 440px minmax(410px, 1fr) 314px; overflow: hidden; }
+/* The console is a support panel, not the subject. Dropping the pan dials and
+   the meters that never moved buys the reading pane back ~130px. */
+.workspace { min-height: 0; display: grid; grid-template-columns: 310px minmax(410px, 1fr) 300px; overflow: hidden; }
 .routeState{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--text-muted)}.routeState>svg{width:28px;height:28px;color:var(--accent-soft)}.routeState strong{color:var(--text);font-size:18px}.routeState a{color:var(--accent-soft);font-weight:700}.spin{animation:studioSpin .9s linear infinite}@keyframes studioSpin{to{transform:rotate(360deg)}}.playbackError{position:absolute;z-index:12;left:50%;bottom:calc(var(--transport-h) + 12px);transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface-2);border:1px solid var(--danger);color:var(--text-soft)}.playbackError svg{color:var(--danger)}
 .separationProgress{position:absolute;z-index:12;left:50%;top:calc(var(--topbar-h) + 76px);transform:translateX(-50%);display:flex;align-items:center;gap:9px;padding:9px 13px;background:var(--surface-2);border:1px solid var(--accent);color:var(--text-soft);font-size:12px}.separationProgress svg{width:17px;color:var(--accent-soft)}
-@media (max-width: 1279px) { .workspace { grid-template-columns: 320px minmax(390px, 1fr) 274px; } }
-@media (max-width: 1023px) { .workspace { grid-template-columns: 280px minmax(420px, 1fr); overflow-x: auto; } .workspace > :last-child { display: none; } }
+/* Wide enough for all three panels at once, so the switcher is not needed. */
+.paneSwitch { display: none; }
+
+@media (max-width: 1279px) { .workspace { grid-template-columns: 296px minmax(390px, 1fr) 274px; } }
+
+/* Below this the three panels no longer fit side by side. They are put behind a
+   switcher rather than deleted: hiding the mixer and the practice settings
+   leaves a four-stem practice app with no way to reach either. */
+@media (max-width: 1023px) {
+  .studio { grid-template-rows: 64px 44px minmax(0, 1fr) var(--transport-h); }
+  .paneSwitch { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line-strong); background: var(--surface-1); }
+  .paneSwitch button { position: relative; color: var(--text-muted); font-size: 12px; font-weight: 700; }
+  .paneSwitch button[aria-pressed="true"] { color: var(--text); }
+  .paneSwitch button[aria-pressed="true"]::after { content: ""; position: absolute; inset: auto 12px -1px; height: 3px; background: var(--accent); }
+  .workspace { display: block; overflow: hidden; }
+  .workspace[data-pane="mix"] > :not(:nth-child(1)),
+  .workspace[data-pane="song"] > :not(:nth-child(2)),
+  .workspace[data-pane="practice"] > :not(:nth-child(3)) { display: none; }
+  .workspace > * { height: 100%; }
+}
+
 @media (max-width: 760px) {
-  .studio { grid-template-rows: 58px minmax(0, 1fr) 164px; }
+  .studio { grid-template-rows: 58px 42px minmax(0, 1fr) 164px; }
   .songbar { padding: 0 12px; }
   .songbar > div:nth-child(2) { gap: 8px; }
   .songbar strong { font-size: 18px; }
   .songbar div span { display: none; }
-  .songActions button:not(:first-child):not(:last-child) { display: none; }
-  .workspace { display: block; overflow: hidden; }
-  .workspace > :first-child, .workspace > :last-child { display: none; }
 }
