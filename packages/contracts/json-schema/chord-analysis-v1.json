@@ -9,7 +9,7 @@
     "schema": {"const": "atarang.chords/1"},
     "originalId": {"type": "string", "format": "uuid"},
     "revision": {"type": "integer", "minimum": 0},
-    "algorithmVersion": {"const": "atarang-chroma/1"},
+    "algorithmVersion": {"enum": ["atarang-chroma/2", "atarang-chroma/2-stems"]},
     "key": {"type": ["string", "null"]},
     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     "segments": {

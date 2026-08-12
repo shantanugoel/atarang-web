@@ -13,6 +13,7 @@ import { DEMO_TRACK, useDemoAudio } from "./useDemoAudio";
 import { useSeparatedAudio } from "./useSeparatedAudio";
 import { useWaveform } from "./useWaveform";
 import { usePracticePersistence } from "./usePracticePersistence";
+import { ensureStemChordAnalysis } from "./waveformAnalysis";
 import {useBeatGrid} from "./useBeatGrid";
 import {useSeparation} from "../separation/useSeparation";
 import {importSeparationPackage,type SeparationImportProgress} from "../separation/separationImporter";
@@ -49,6 +50,9 @@ export function StudioPage() {
   useEffect(()=>{if(separation===null&&playback.playing&&loopEnabled&&playback.currentTimeUs>=loopEndUs)playback.seekTo(loopStartUs/1_000_000)},[loopEnabled,loopEndUs,loopStartUs,playback.currentTimeUs,playback.playing,playback.seekTo,separation]);
 
   useEffect(() => { let active = true; if (!songId) { setOriginal(null); return; } setOriginal(undefined); void getOriginal(songId).then((record) => { if (active) setOriginal(record ?? null); }); return () => { active = false; }; }, [songId]);
+  // Chords first decoded from the mixture are re-decoded from the stems, where
+  // the drums and the vocal line are no longer voting on the harmony.
+  useEffect(()=>{if(original&&separation)void ensureStemChordAnalysis(original,separation)},[original,separation]);
   useEffect(()=>{if(original&&searchParams.get("separate")==="1"){setSeparationError("");setSeparationSheet(true);setSearchParams({}, {replace:true})}},[original,searchParams,setSearchParams]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

@@ -1,12 +1,25 @@
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from "mediabunny";
 import FFT from "fft.js";
-import {detectBeatGrid} from "../features/analysis/beatDetection";
-import {classifyChroma,mergeChordWindows} from "../features/analysis/chordDetection";
+import { detectBeatGrid } from "../features/analysis/beatDetection";
+import { bassChromaFrame, chordBoundaries, chromaGeometry, detectChords, harmonicChromaFrame, keyName } from "../features/analysis/chordDetection";
 
 interface WaveformRequest { type: "waveform/analyze"; requestId: string; songId: string; generation: number; opfsPath: string }
+/**
+ * Chords from the separated stems.
+ *
+ * Vocals and drums never reach here: a sung melody note is not the harmony and
+ * frequently disagrees with it, and drums put broadband noise into every pitch
+ * class equally. Bass arrives below full weight because its fundamental would
+ * otherwise dominate a normalised profile and turn every chord into its own
+ * root — but it is also the only honest witness to which inversion is playing,
+ * so it is scored separately as well.
+ */
+interface StemChordRequest { type: "chords/analyze"; requestId: string; songId: string; generation: number; otherOpfsPath: string; bassOpfsPath: string; boundaries: number[] }
+const BASS_HARMONIC_WEIGHT = 0.8;
+
 const BASE_BUCKET = 256;
 const LEVEL_BUCKETS = [256, 1024, 4096, 16384] as const;
-const FFT_SIZE=2048,HOP_FRAMES=1024;
+const FFT_SIZE = 2048, HOP_FRAMES = 1024;
 
 async function fileForPath(path: string) {
   const parts = path.split("/").filter(Boolean); const name = parts.pop();
@@ -14,6 +27,30 @@ async function fileForPath(path: string) {
   let directory = await navigator.storage.getDirectory();
   for (const part of parts) directory = await directory.getDirectoryHandle(part);
   return (await directory.getFileHandle(name)).getFile();
+}
+
+/** Opens one OPFS audio file as a stream of mono chunks, rate known up front. */
+async function openMono(opfsPath: string) {
+  const input = new Input({ source: new BlobSource(await fileForPath(opfsPath), { maxCacheSize: 8 * 1024 * 1024 }), formats: ALL_FORMATS });
+  const track = await input.getPrimaryAudioTrack();
+  if (!track || !(await track.canDecode())) { input.dispose(); throw new Error("unsupported_format"); }
+  return {
+    sampleRate: await track.getSampleRate(),
+    channels: await track.getNumberOfChannels(),
+    dispose: () => input.dispose(),
+    async *chunks() {
+      for await (const sample of new AudioSampleSink(track).samples()) {
+        const mono = new Float32Array(sample.numberOfFrames);
+        for (let channel = 0; channel < sample.numberOfChannels; channel++) {
+          const plane = new Float32Array(sample.numberOfFrames);
+          sample.copyTo(plane, { format: "f32-planar", planeIndex: channel });
+          for (let frame = 0; frame < plane.length; frame++) mono[frame] = mono[frame]! + plane[frame]! / sample.numberOfChannels;
+        }
+        sample.close();
+        yield mono;
+      }
+    },
+  };
 }
 
 function aggregateLevel(baseMin: number[], baseMax: number[], baseMeanSquare: number[], baseCounts: number[], factor: number) {
@@ -30,44 +67,161 @@ function aggregateLevel(baseMin: number[], baseMax: number[], baseMeanSquare: nu
   return { min, max, rms };
 }
 
-self.onmessage = async ({ data }: MessageEvent<WaveformRequest>) => {
-  if (data.type !== "waveform/analyze") return;
-  const identity = { requestId: data.requestId, songId: data.songId, generation: data.generation };
+/**
+ * Chroma runs on its own framing: long windows at the source rate. The flux used
+ * for beats wants the opposite — short windows, fine time resolution — so the
+ * two cannot share an FFT.
+ *
+ * Frames are *centred* on their own timestamp. An uncentred frame describes the
+ * 186 ms that follow it, so every frame in the last beat of a bar already
+ * contains a third of the chord that comes next, which moves every chord change
+ * a beat early.
+ */
+class ChromaStream {
+  readonly frames: { harmonic: Float64Array; bass: Float64Array; energy: number }[] = [];
+  readonly hopSeconds: number;
+  readonly #sampleRate: number;
+  readonly #size: number;
+  readonly #hop: number;
+  readonly #fft: FFT;
+  readonly #spectrum: number[];
+  readonly #input: number[];
+  readonly #magnitudes: Float64Array;
+  readonly #window: number[];
+  readonly #harmonic: Float32Array;
+  readonly #bass: Float32Array;
+  #fill: number;
+
+  constructor(sampleRate: number) {
+    const geometry = chromaGeometry(sampleRate);
+    this.#sampleRate = sampleRate;
+    this.#size = geometry.size;
+    this.#hop = geometry.hop;
+    this.hopSeconds = geometry.hop / sampleRate;
+    this.#fft = new FFT(geometry.size);
+    this.#spectrum = this.#fft.createComplexArray();
+    this.#input = new Array<number>(geometry.size).fill(0);
+    this.#magnitudes = new Float64Array(geometry.size / 2 + 1);
+    this.#window = Array.from({ length: geometry.size }, (_, index) => 0.5 - 0.5 * Math.cos(2 * Math.PI * index / (geometry.size - 1)));
+    this.#harmonic = new Float32Array(geometry.size);
+    this.#bass = new Float32Array(geometry.size);
+    // Half a window of leading silence is what centres the first frame.
+    this.#fill = geometry.size / 2;
+  }
+
+  push(harmonic: number, bass: number) {
+    this.#harmonic[this.#fill] = harmonic;
+    this.#bass[this.#fill] = bass;
+    if (++this.#fill < this.#size) return;
+    const profile = this.#profile(this.#harmonic, harmonicChromaFrame);
+    this.frames.push({ harmonic: profile.chroma, bass: this.#profile(this.#bass, bassChromaFrame).chroma, energy: profile.energy });
+    this.#harmonic.copyWithin(0, this.#hop);
+    this.#bass.copyWithin(0, this.#hop);
+    this.#fill -= this.#hop;
+  }
+
+  /** Pads the tail so the final frames cover the end of the song. */
+  finish() { for (let index = 0; index < this.#size / 2; index++) this.push(0, 0); }
+
+  #profile(buffer: Float32Array, extract: (magnitudes: ArrayLike<number>, sampleRate: number, size: number) => { chroma: Float64Array; energy: number }) {
+    for (let index = 0; index < this.#size; index++) this.#input[index] = buffer[index]! * this.#window[index]!;
+    this.#fft.realTransform(this.#spectrum, this.#input);
+    for (let bin = 0; bin <= this.#size / 2; bin++) this.#magnitudes[bin] = Math.hypot(this.#spectrum[bin * 2]!, this.#spectrum[bin * 2 + 1]!);
+    return extract(this.#magnitudes, this.#sampleRate, this.#size);
+  }
+}
+
+async function analyseWaveform(data: WaveformRequest, identity: object) {
+  const fft = new FFT(FFT_SIZE), fftInput = new Array<number>(FFT_SIZE).fill(0), fftOutput = fft.createComplexArray();
+  const previousMagnitude = new Float64Array(FFT_SIZE / 2 + 1), analysisBuffer = new Float32Array(FFT_SIZE), flux: number[] = [];
+  let analysisFill = 0;
+  const analyzeFrame = () => {
+    for (let index = 0; index < FFT_SIZE; index++) fftInput[index] = analysisBuffer[index]! * (.5 - .5 * Math.cos(2 * Math.PI * index / (FFT_SIZE - 1)));
+    fft.realTransform(fftOutput, fftInput);
+    let novelty = 0;
+    for (let bin = 1; bin <= FFT_SIZE / 2; bin++) {
+      const magnitude = Math.log1p(Math.hypot(fftOutput[bin * 2]!, fftOutput[bin * 2 + 1]!)), difference = magnitude - previousMagnitude[bin]!;
+      if (difference > 0) novelty += difference;
+      previousMagnitude[bin] = magnitude;
+    }
+    flux.push(novelty);
+    analysisBuffer.copyWithin(0, HOP_FRAMES);
+    analysisFill -= HOP_FRAMES;
+  };
+
+  const baseMin: number[] = [], baseMax: number[] = [], baseMeanSquare: number[] = [], baseCounts: number[] = [];
+  let bucketMin = 1, bucketMax = -1, bucketSumSquares = 0, bucketCount = 0, durationFrames = 0, lastProgress = 0;
+  const flush = () => { if (!bucketCount) return; baseMin.push(bucketMin); baseMax.push(bucketMax); baseMeanSquare.push(bucketSumSquares / bucketCount); baseCounts.push(bucketCount); bucketMin = 1; bucketMax = -1; bucketSumSquares = 0; bucketCount = 0; };
+
+  const source = await openMono(data.opfsPath);
+  // Without stems the mixture is the only harmonic evidence there is, so the
+  // same pass also feeds chroma. Separation replaces this with the real
+  // harmonic mix later.
+  const chroma = new ChromaStream(source.sampleRate);
   try {
-    const file = await fileForPath(data.opfsPath);
-    const input = new Input({ source: new BlobSource(file, { maxCacheSize: 8 * 1024 * 1024 }), formats: ALL_FORMATS });
-    const track = await input.getPrimaryAudioTrack();
-    if (!track || !(await track.canDecode())) throw new Error("unsupported_format");
-    const sampleRate = await track.getSampleRate(); const channels = await track.getNumberOfChannels();
-    const sink = new AudioSampleSink(track);
-    const fft=new FFT(FFT_SIZE),fftInput=new Array<number>(FFT_SIZE).fill(0),fftOutput=fft.createComplexArray(),previousMagnitude=new Float64Array(FFT_SIZE/2+1),analysisBuffer=new Float32Array(FFT_SIZE),flux:number[]=[],chroma=new Float64Array(12),chordWindows:{startFrame:number;endFrame:number;chord:string;confidence:number}[]=[];let analysisFill=0,chordFrameCount=0,chordWindowStart=0;
-    const flushChord=(endFrame:number)=>{if(!chordFrameCount)return;const value=classifyChroma(chroma);chordWindows.push({startFrame:chordWindowStart,endFrame,chord:value.chord,confidence:value.confidence});chroma.fill(0);chordFrameCount=0;chordWindowStart=endFrame};
-    const analyzeFrame=()=>{for(let index=0;index<FFT_SIZE;index++)fftInput[index]=analysisBuffer[index]!*(.5-.5*Math.cos(2*Math.PI*index/(FFT_SIZE-1)));fft.realTransform(fftOutput,fftInput);let novelty=0;for(let bin=1;bin<=FFT_SIZE/2;bin++){const magnitude=Math.log1p(Math.hypot(fftOutput[bin*2]!,fftOutput[bin*2+1]!)),difference=magnitude-previousMagnitude[bin]!;if(difference>0)novelty+=difference;previousMagnitude[bin]=magnitude;const frequency=bin*sampleRate/FFT_SIZE;if(frequency>=55&&frequency<=5000){const midi=Math.round(69+12*Math.log2(frequency/440)),pitchClass=(midi%12+12)%12;chroma[pitchClass]=chroma[pitchClass]!+magnitude}}flux.push(novelty);chordFrameCount++;const analyzedEnd=(flux.length-1)*HOP_FRAMES+FFT_SIZE;if(chordFrameCount>=Math.max(1,Math.round(sampleRate/HOP_FRAMES)))flushChord(analyzedEnd);analysisBuffer.copyWithin(0,HOP_FRAMES);analysisFill-=HOP_FRAMES};
-    const baseMin: number[] = []; const baseMax: number[] = []; const baseMeanSquare: number[] = []; const baseCounts: number[] = [];
-    let bucketMin = 1; let bucketMax = -1; let bucketSumSquares = 0; let bucketCount = 0; let durationFrames = 0; let lastProgress = 0;
-    const flush = () => { if (!bucketCount) return; baseMin.push(bucketMin); baseMax.push(bucketMax); baseMeanSquare.push(bucketSumSquares / bucketCount); baseCounts.push(bucketCount); bucketMin=1;bucketMax=-1;bucketSumSquares=0;bucketCount=0; };
-    for await (const sample of sink.samples()) {
-      const mono = new Float32Array(sample.numberOfFrames);
-      for (let channel = 0; channel < sample.numberOfChannels; channel++) {
-        const plane = new Float32Array(sample.numberOfFrames);
-        sample.copyTo(plane, { format: "f32-planar", planeIndex: channel });
-        for (let frame = 0; frame < plane.length; frame++) mono[frame] = mono[frame]! + plane[frame]! / sample.numberOfChannels;
-      }
+    for await (const mono of source.chunks()) {
       for (const value of mono) {
         bucketMin = Math.min(bucketMin, value); bucketMax = Math.max(bucketMax, value); bucketSumSquares += value * value; bucketCount++; durationFrames++;
         if (bucketCount === BASE_BUCKET) flush();
-        analysisBuffer[analysisFill++]=value;if(analysisFill===FFT_SIZE)analyzeFrame();
+        analysisBuffer[analysisFill++] = value; if (analysisFill === FFT_SIZE) analyzeFrame();
+        chroma.push(value, value);
       }
-      sample.close();
-      if (durationFrames - lastProgress >= sampleRate) { lastProgress = durationFrames; self.postMessage({ type: "waveform/progress", ...identity, durationFrames }); }
+      if (durationFrames - lastProgress >= source.sampleRate) { lastProgress = durationFrames; self.postMessage({ type: "waveform/progress", ...identity, durationFrames }); }
     }
-    flush(); input.dispose();
-    const levels = LEVEL_BUCKETS.map((framesPerBucket) => ({ framesPerBucket, ...aggregateLevel(baseMin, baseMax, baseMeanSquare, baseCounts, framesPerBucket / BASE_BUCKET) }));
-    flushChord(durationFrames);if(chordWindows.length&&chordWindows.at(-1)!.endFrame<durationFrames)chordWindows.at(-1)!.endFrame=durationFrames;const beatAnalysis=detectBeatGrid(flux,sampleRate,HOP_FRAMES,durationFrames),chordAnalysis={segments:mergeChordWindows(chordWindows,sampleRate)};
-    const transfer = levels.flatMap((level) => [level.min.buffer, level.max.buffer, level.rms.buffer]);
-    self.postMessage({ type: "waveform/complete", ...identity, sampleRate, channels, durationFrames, levels,beatAnalysis,chordAnalysis }, { transfer });
+  } finally { source.dispose(); }
+  flush();
+  chroma.finish();
+
+  const levels = LEVEL_BUCKETS.map((framesPerBucket) => ({ framesPerBucket, ...aggregateLevel(baseMin, baseMax, baseMeanSquare, baseCounts, framesPerBucket / BASE_BUCKET) }));
+  const beatAnalysis = detectBeatGrid(flux, source.sampleRate, HOP_FRAMES, durationFrames);
+  const durationUs = Math.round(durationFrames / source.sampleRate * 1_000_000);
+  const beatTimesUs = beatAnalysis.beatsFrames.map((frame) => Math.round(frame / source.sampleRate * 1_000_000));
+  const decoded = detectChords(chroma.frames, chroma.hopSeconds, chordBoundaries(beatTimesUs, beatAnalysis.reliable, durationUs));
+  const transfer = levels.flatMap((level) => [level.min.buffer, level.max.buffer, level.rms.buffer]);
+  self.postMessage({ type: "waveform/complete", ...identity, sampleRate: source.sampleRate, channels: source.channels, durationFrames, levels, beatAnalysis, chordAnalysis: { segments: decoded.segments, key: keyName(decoded.key) } }, { transfer });
+}
+
+async function analyseStemChords(data: StemChordRequest, identity: object) {
+  const other = await openMono(data.otherOpfsPath);
+  const bass = await openMono(data.bassOpfsPath);
+  const chroma = new ChromaStream(other.sampleRate);
+  try {
+    // The two stems are decoded in lockstep rather than buffered whole: a
+    // twenty-minute pair would be several hundred megabytes of Float32.
+    const readers = [other, bass].map((source) => ({ iterator: source.chunks()[Symbol.asyncIterator](), chunk: new Float32Array(0), offset: 0 }));
+    for (;;) {
+      let exhausted = false;
+      for (const reader of readers) {
+        while (reader.offset >= reader.chunk.length) {
+          const next = await reader.iterator.next();
+          if (next.done) { exhausted = true; break; }
+          reader.chunk = next.value; reader.offset = 0;
+        }
+        if (exhausted) break;
+      }
+      if (exhausted) break;
+      const [otherReader, bassReader] = readers as [typeof readers[0], typeof readers[0]];
+      const take = Math.min(otherReader.chunk.length - otherReader.offset, bassReader.chunk.length - bassReader.offset);
+      for (let index = 0; index < take; index++) {
+        const bassValue = bassReader.chunk[bassReader.offset + index]!;
+        chroma.push(otherReader.chunk[otherReader.offset + index]! + bassValue * BASS_HARMONIC_WEIGHT, bassValue);
+      }
+      otherReader.offset += take;
+      bassReader.offset += take;
+    }
+  } finally { other.dispose(); bass.dispose(); }
+  chroma.finish();
+
+  const decoded = detectChords(chroma.frames, chroma.hopSeconds, data.boundaries);
+  self.postMessage({ type: "chords/complete", ...identity, segments: decoded.segments, key: keyName(decoded.key) });
+}
+
+self.onmessage = async ({ data }: MessageEvent<WaveformRequest | StemChordRequest>) => {
+  const identity = { requestId: data.requestId, songId: data.songId, generation: data.generation };
+  try {
+    if (data.type === "waveform/analyze") await analyseWaveform(data, identity);
+    else if (data.type === "chords/analyze") await analyseStemChords(data, identity);
   } catch (error) {
-    self.postMessage({ type: "waveform/error", ...identity, code: error instanceof Error ? error.message : "analysis_failed" });
+    self.postMessage({ type: data.type === "chords/analyze" ? "chords/error" : "waveform/error", ...identity, code: error instanceof Error ? error.message : "analysis_failed" });
   }
 };
-export {};
