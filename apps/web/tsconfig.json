@@ -13,5 +13,5 @@
     "composite": true,
     "types": ["bun"]
   },
-  "include": ["src", "build.ts", "preview.ts"]
+  "include": ["src", "build.ts", "server.ts", "preview.ts", "dev.ts"]
 }

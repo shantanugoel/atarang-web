@@ -65,6 +65,18 @@ if (!builtHtml) throw new Error("Application build did not emit HTML");
 const html = (await Bun.file(builtHtml.path).text()).replaceAll('href="./', 'href="/assets/').replaceAll('src="./', 'src="/assets/');
 await Bun.write(`${outdir}/index.html`, html);
 await Bun.write(`${outdir}/manifest.webmanifest`, Bun.file("public/manifest.webmanifest"));
+
+// Stage locally downloaded model weights so `bun run preview` can serve the
+// same /models/<id>/ paths the container image publishes. Absent weights are
+// normal: the app treats the model as not installed and says so.
+const modelStage = "../../model-files";
+if (await Bun.file(`${modelStage}/manifest.json`).exists()) {
+  const staged = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: modelStage }));
+  for (const name of staged) await Bun.write(`${outdir}/models/htdemucs-web-onnx/${name}`, Bun.file(`${modelStage}/${name}`));
+  console.log(`Staged ${staged.length} model files for local preview.`);
+} else {
+  console.log("No model-files/ present; run `bun models/web/download.ts` to enable browser separation locally.");
+}
 const publicPath = (path: string) => {
   const marker = `${outdir}/`;
   const index = path.lastIndexOf(marker);

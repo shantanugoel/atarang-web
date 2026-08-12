@@ -43,16 +43,18 @@ export function useModelManager() {
     refresh();
     const controller = new AbortController();
     void fetch("/models/htdemucs-web-onnx/manifest.json", { signal:controller.signal })
-      .then(response => {
-        if (!response.ok) throw new Error("built_in_model_unavailable");
-        return response.json() as Promise<unknown>;
+      .then(async response => {
+        // A host that does not publish the weights answers with its SPA shell
+        // or a 404. Both mean "not installed here", not "the manifest is bad".
+        if (!response.ok || !response.headers.get("content-type")?.includes("json")) throw new Error("built_in_model_unavailable");
+        return await response.json() as unknown;
       })
       .then(value => {
         assertModelArtifactManifest(value);
         setManifest(value);
       })
       .catch(reason => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "built_in_model_unavailable");
+        if (!controller.signal.aborted) setError("built_in_model_unavailable");
       });
     return () => controller.abort();
   }, [refresh]);

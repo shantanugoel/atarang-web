@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --hot src/index.html",
+    "dev": "bun --hot dev.ts",
     "build": "bun run build.ts",
     "preview": "bun run preview.ts",
     "typecheck": "tsc --noEmit",
