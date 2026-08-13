@@ -25,6 +25,8 @@ import { DEMO_TRACK } from "../useDemoAudio";
 import { uuidV7 } from "../../../storage/ids";
 import { searchLyricsCandidates, type LrclibResult } from "../../lyrics/lrclib";
 
+const TABS: StudioTab[] = ["lyrics", "chords", "sheet", "takes"];
+
 const formatTime = (timeUs?: number) =>
   timeUs === undefined
     ? "--:--.--"
@@ -221,12 +223,34 @@ export function LyricsWorkspace({
   };
   return (
     <section className={styles.workspace} aria-label="Song editor">
-      <div className={styles.tabs} role="tablist" aria-label="Practice content">
-        {(["lyrics", "chords", "sheet", "takes"] as StudioTab[]).map((item) => (
+      <div
+        className={styles.tabs}
+        role="tablist"
+        aria-label="Practice content"
+        // The row declared the roles but bound no keys, so the one interaction
+        // every tab widget has — arrows move between tabs — did nothing, and
+        // all four sat in the tab order a keyboard user has to walk through.
+        onKeyDown={(event) => {
+          const index = TABS.indexOf(tab),
+            next = event.key === "ArrowRight" ? (index + 1) % TABS.length
+              : event.key === "ArrowLeft" ? (index - 1 + TABS.length) % TABS.length
+              : event.key === "Home" ? 0
+              : event.key === "End" ? TABS.length - 1
+              : -1;
+          if (next < 0) return;
+          event.preventDefault();
+          setTab(TABS[next]!);
+          event.currentTarget.querySelectorAll<HTMLButtonElement>("[role='tab']")[next]?.focus();
+        }}
+      >
+        {TABS.map((item) => (
           <button
             key={item}
             role="tab"
             aria-selected={tab === item}
+            // Roving: Tab reaches the row once and then leaves it, rather than
+            // stopping on every view on the way to the content.
+            tabIndex={tab === item ? 0 : -1}
             onClick={() => setTab(item)}
           >
             {item[0]!.toUpperCase() + item.slice(1)}
