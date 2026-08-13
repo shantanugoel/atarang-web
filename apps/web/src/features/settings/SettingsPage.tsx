@@ -5,6 +5,7 @@ import {downloadBackup,restoreBackup} from "../../storage/backup";
 import {listQuarantine,runIntegrityScan} from "../../storage/integrity";
 import {useModelManager} from "../separation/useModelManager";
 import {cloudCapabilities,getCloudConfiguration,setCloudConfiguration} from "../separation/cloudClient";
+import {cloudErrorMessage} from "../separation/stageLabel";
 import styles from "./SettingsPage.module.css";
 import{UserChordLibrary}from"../chords/UserChordLibrary";
 
@@ -46,15 +47,21 @@ export function SettingsPage() {
   useEffect(() => { void refresh();void runIntegrityScan().then(()=>listQuarantine()).then(items=>setQuarantineCount(items.length)); }, [refresh]);
   const requestPersistence = async () => { const granted = await navigator.storage.persist(); await putSetting("storage.persistence", { granted, checkedAt: new Date().toISOString() }); await refresh(); };
   const saveCloudConfiguration = async () => {
+    // Parsed before anything else, because `new URL` on a half-typed address
+    // throws the browser's own "Failed to construct 'URL': Invalid URL" — a
+    // sentence about a constructor, shown to someone who mistyped a hostname.
+    let origin: string;
+    try { origin = new URL(cloudOrigin).origin; }
+    catch { setCloudStatus("Enter the full server address, including https://, such as https://atarang.example.com."); return; }
     try {
-      const value={origin:new URL(cloudOrigin).origin,deploymentKey:cloudKey};
+      const value={origin,deploymentKey:cloudKey};
       setCloudStatus("Checking server…");
       await cloudCapabilities(value);
       setCloudConfiguration(value);
       setCloudStatus("Server capability verified for this session.");
     } catch (error) {
       setCloudConfiguration(null);
-      setCloudStatus(error instanceof Error&&error.message==="invalid_deployment_key"?"Deployment key rejected. Check the DEPLOYMENT_KEY value configured on this server.":`Server check failed: ${error instanceof Error?error.message:"unavailable"}`);
+      setCloudStatus(cloudErrorMessage(error));
     }
   };
   return <div className={styles.page}><header><h1>Settings</h1><p>Storage, audio, privacy, and capabilities.</p></header>

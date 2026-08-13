@@ -3,7 +3,7 @@ import { Cloud, FileArrowUp, Gauge, HardDrives, SpinnerGap, X } from "@phosphor-
 import type { OriginalRecord } from "../../../storage/database";
 import { getCloudConfiguration, runCloudSeparation } from "../../separation/cloudClient";
 import { localSeparationErrorMessage, probeLocalBrowser, qualifiedLocalRoute, runLocalSeparation, type LocalBrowserSupport } from "../../separation/localSeparation";
-import { stageLabel } from "../../separation/stageLabel";
+import { cloudErrorMessage, stageLabel } from "../../separation/stageLabel";
 import styles from "./SeparationSheet.module.css";
 
 interface Props { original: OriginalRecord;replacing:boolean; onClose(): void; onImportPackage(): void; onCloudPackage(files: File[], purge: () => Promise<void>): Promise<void>;onLocalFailure(message:string):void }
@@ -53,7 +53,7 @@ export function SeparationSheet({ original,replacing, onClose, onImportPackage, 
       await onCloudPackage(result.files, result.purge);
       onClose();
     } catch (value) {
-      setError(active.signal.aborted ? "Cancelled. Server cleanup was requested." : value instanceof Error ? value.message : "separation_failed");
+      setError(active.signal.aborted ? "Cancelled. Server cleanup was requested." : cloudErrorMessage(value));
     } finally {
       setProgress(null);
       controller.current = null;

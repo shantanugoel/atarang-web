@@ -6,7 +6,7 @@ import { getBlob, removeAnalysis, removeOriginal, removePerformance, removeSepar
 import { fileForOpfsPath } from "../../storage/opfs";
 import { importSeparationPackage } from "../separation/separationImporter";
 import { cloudCapabilities, getCloudConfiguration, runYouTubeSeparation, type CloudProgress } from "../separation/cloudClient";
-import { stageLabel } from "../separation/stageLabel";
+import { cloudErrorMessage, stageLabel } from "../separation/stageLabel";
 import { useLibrary } from "./useLibrary";
 import styles from "./LibraryPage.module.css";
 import demoUrl from "../../assets/backbeat.mp3";
@@ -82,7 +82,7 @@ export function LibraryPage() {
       setYoutubeUrl(""); setRightsConfirmed(false);
       await navigate(`/studio/${result.original.id}${result.files ? "" : "?separate=1"}`);
     } catch (caught) {
-      setError(controller.signal.aborted ? "YouTube acquisition cancelled. Any source already verified and imported into your Library is retained." : caught instanceof Error ? caught.message : "youtube_acquisition_failed");
+      setError(controller.signal.aborted ? "YouTube acquisition cancelled. Any source already verified and imported into your Library is retained." : errorText[caught instanceof Error ? caught.message : ""] ?? cloudErrorMessage(caught));
     } finally { setProgress(null); setYoutubeProgress(null); youtubeController.current = null; }
   };
   const removeSong = async (id: string, title: string) => { if (window.confirm(`Remove “${title}” and its generated audio from this browser? This never affects the source file on your computer.`)) await removeOriginal(id); };
@@ -92,7 +92,7 @@ export function LibraryPage() {
   const selectionIds=category==="performances"?visiblePerformances.map(take=>take.id):visibleSongs.map(song=>song.id);
   const toggleSelected=(id:string)=>setSelected(current=>{const next=new Set(current);if(next.has(id))next.delete(id);else next.add(id);return next});
   const removeSelected=async()=>{if(!selected.size)return;const label=category==="originals"?"songs and their generated assets":category==="separated"?"separations (the originals and takes stay)":"recorded takes";if(!window.confirm(`Remove ${selected.size} selected ${label}?`))return;try{for(const id of selected)await(category==="originals"?removeOriginal(id):category==="separated"?removeSeparation(id):removePerformance(id));setSelected(new Set())}catch{setError("Some selected items could not be removed. Nothing still referenced was deleted.")}};
-  const addDemo=async()=>{if(importing)return;setError("");try{const response=await fetch(new URL(demoUrl,import.meta.url));const blob=await response.blob();const song=await importLocalFile(new File([blob],`${DEMO_TRACK.title}.mp3`,{type:"audio/mpeg"}),setProgress);setProgress(null);await navigate(`/studio/${song.id}?separate=1`)}catch(caught){setProgress(null);setError(caught instanceof Error?caught.message:"demo_import_failed")}};
+  const addDemo=async()=>{if(importing)return;setError("");try{const response=await fetch(new URL(demoUrl,import.meta.url));const blob=await response.blob();const song=await importLocalFile(new File([blob],`${DEMO_TRACK.title}.mp3`,{type:"audio/mpeg"}),setProgress);setProgress(null);await navigate(`/studio/${song.id}?separate=1`)}catch(caught){setProgress(null);setError(errorText[caught instanceof Error?caught.message:""]??"The bundled demo could not be added. Your existing library was not changed.")}};
   return <div className={styles.page} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void importFile(event.dataTransfer.files[0]); }}>
     <header><div><h1>Library</h1><p>Your music stays in this browser.</p></div><button className={styles.import} disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? <SpinnerGap className={styles.spin}/> : <Plus weight="bold"/>}{importing ? "Importing…" : "Import audio"}</button><input ref={inputRef} className="sr-only" aria-label="Choose audio to import" type="file" accept="audio/*,.flac" onChange={(event) => void importFile(event.target.files?.[0])}/></header>
     {progress && <div className={styles.progress} role="status"><SpinnerGap className={styles.spin}/><div><strong>{progress.phase === "preflight" ? "Checking storage and audio" : progress.phase === "writing" ? "Writing to protected staging" : progress.phase === "verifying" ? "Verifying content-addressed copy" : "Publishing to your Library"}</strong><span>{progress.phase === "preflight" ? "Nothing appears in the Library until verification passes." : `${progressPercent}% complete`}</span></div><progress max="100" value={progressPercent}/></div>}
