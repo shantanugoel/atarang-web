@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle, ClockCounterClockwise, FileAudio, FolderOpen, HardDrives, MagnifyingGlass, Microphone, Plus, SpinnerGap, Trash, WarningCircle, Waveform, YoutubeLogo } from "@phosphor-icons/react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { importLocalFile, type ImportProgress } from "../../storage/importer";
 import { removeOriginal } from "../../storage/repositories";
 import { importSeparationPackage } from "../separation/separationImporter";
@@ -18,7 +18,11 @@ const errorText: Record<string,string> = { unsupported_format: "This audio forma
 
 export function LibraryPage() {
   const { songs, performances, usage, loading } = useLibrary();
-  const [category,setCategory]=useState<"originals"|"separated"|"performances">("originals");
+  // In the URL, so Back returns to the list you were reading and a reload keeps
+  // it. The search box below stays local: half-typed text is not a view.
+  const [params,setParams]=useSearchParams();
+  const category=(["originals","separated","performances"] as const).find(item=>item===params.get("category"))??"originals";
+  const setCategory=(value:typeof category)=>setParams(value==="originals"?{}:{category:value},{replace:true});
   const [query, setQuery] = useState("");
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [error, setError] = useState("");

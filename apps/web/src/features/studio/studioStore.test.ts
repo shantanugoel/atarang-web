@@ -2,7 +2,37 @@ import {beforeEach,describe,expect,test} from "bun:test";
 import {useStudioStore} from "./studioStore";
 
 const state=()=>useStudioStore.getState();
-beforeEach(()=>{state().resetPractice(240_000_000);state().setTarget("vocals")});
+beforeEach(()=>{state().openSong(null);state().resetPractice(240_000_000);state().setTarget("vocals")});
+
+describe("view state across a remount",()=>{
+  // Opening the Library and coming back remounts the page, which re-runs the
+  // practice hydration. Everything the user aimed has to survive that.
+  test("hydrating practice state for the same song leaves the view alone",()=>{
+    state().openSong("song-a");
+    state().zoomBy(3);
+    state().setTab("chords");
+    state().setPane("mix");
+    state().setChartId("chart-1");
+    state().openSong("song-a");
+    state().resetPractice(240_000_000);
+    expect(state().zoom).toBe(8);
+    expect(state().tab).toBe("chords");
+    expect(state().pane).toBe("mix");
+    expect(state().chartId).toBe("chart-1");
+  });
+
+  test("opening a different song drops what belonged to the last one",()=>{
+    state().openSong("song-a");
+    state().zoomBy(2);
+    state().setChartId("chart-1");
+    state().setTab("chords");
+    state().openSong("song-b");
+    expect(state().zoom).toBe(1);
+    expect(state().chartId).toBeNull();
+    // How this user reads a song, not a property of the song.
+    expect(state().tab).toBe("chords");
+  });
+});
 
 describe("mix presets",()=>{
   test("Learn lifts the selected stem and lowers the band, without muting it",()=>{

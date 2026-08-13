@@ -44,15 +44,15 @@ export function StudioPage() {
   const[separationProgress,setSeparationProgress]=useState<SeparationImportProgress|null>(null);
   const[separationSheet,setSeparationSheet]=useState(false);
   const[chordProgress,setChordProgress]=useState<number|null>(null);
-  // Only consulted below 1024px, where the three panels no longer fit together.
-  const[pane,setPane]=useState<"mix"|"song"|"practice">("song");
+  const pane = useStudioStore((s) => s.pane);
+  const setPane = useStudioStore((s) => s.setPane);
   const[separationError,setSeparationError]=useState("");
   const playbackToggle = playback.toggle;
   const playbackSeekBy = playback.seekBy;
   usePracticePersistence(original ?? undefined, playback.currentTimeUs, playback.playing, playback.ready, playback.seekTo);
   useEffect(()=>{if(separation===null&&playback.playing&&loopEnabled&&playback.currentTimeUs>=loopEndUs)playback.seekTo(loopStartUs/1_000_000)},[loopEnabled,loopEndUs,loopStartUs,playback.currentTimeUs,playback.playing,playback.seekTo,separation]);
 
-  useEffect(() => { let active = true; if (!songId) { setOriginal(null); return; } setOriginal(undefined); void getOriginal(songId).then((record) => { if (active) setOriginal(record ?? null); }); return () => { active = false; }; }, [songId]);
+  useEffect(() => { let active = true; useStudioStore.getState().openSong(songId ?? null); if (!songId) { setOriginal(null); return; } setOriginal(undefined); void getOriginal(songId).then((record) => { if (active) setOriginal(record ?? null); }); return () => { active = false; }; }, [songId]);
   // Chords first decoded from the mixture are re-decoded from the stems, where
   // the drums and the vocal line are no longer voting on the harmony.
   useEffect(()=>{if(!original||!separation)return;let active=true;void ensureStemChordAnalysis(original,separation,fraction=>{if(active)setChordProgress(fraction)}).finally(()=>{if(active)setChordProgress(null)});return()=>{active=false;setChordProgress(null)}},[original,separation]);

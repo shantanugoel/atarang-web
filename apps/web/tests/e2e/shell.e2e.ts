@@ -150,3 +150,33 @@ test("saved separated songs enable independent stem controls",async({page})=>{
   await expect(page.getByRole("dialog",{name:"Separate this song again"})).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("the studio keeps the view you set when you leave and come back",async({page,isMobile})=>{
+  await page.goto("/studio");
+  const transport=page.getByRole("region",{name:"Waveform and transport"});
+  await page.getByRole("button",{name:"Zoom in"}).click();
+  await page.getByRole("button",{name:"Zoom in"}).click();
+  await expect(transport).toHaveAttribute("data-zoom","4");
+  await page.getByRole("tab",{name:"Chords"}).click();
+  if(isMobile)await page.getByRole("button",{name:"Practice",exact:true}).click();
+  await page.getByRole("link",{name:"Library"}).click();
+  await expect(page.getByRole("heading",{name:"Library"})).toBeVisible();
+  await page.getByRole("navigation",{name:"Primary navigation"}).getByRole("link",{name:"Studio"}).click();
+  await expect(transport).toHaveAttribute("data-zoom","4");
+  // The compact layout hides the tab strip behind the pane it left on, which is
+  // itself the thing being checked.
+  if(isMobile){await expect(page.getByRole("button",{name:"Practice",exact:true})).toHaveAttribute("aria-pressed","true");await page.getByRole("button",{name:"Song",exact:true}).click()}
+  await expect(page.getByRole("tab",{name:"Chords"})).toHaveAttribute("aria-selected","true");
+});
+
+test("the Library category is in the URL, so Back returns to the list you were reading",async({page})=>{
+  await page.goto("/library");
+  await page.getByRole("button",{name:/^Performances/}).click();
+  await expect(page).toHaveURL(/category=performances/);
+  await expect(page.getByText("No performances yet")).toBeVisible();
+  await page.getByRole("navigation",{name:"Primary navigation"}).getByRole("link",{name:"Studio"}).click();
+  await expect(page).toHaveURL(/\/studio/);
+  await page.goBack();
+  await expect(page).toHaveURL(/category=performances/);
+  await expect(page.getByText("No performances yet")).toBeVisible();
+});

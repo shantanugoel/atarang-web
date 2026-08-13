@@ -4,13 +4,31 @@ import { stepZoom } from "./waveformView";
 
 export type StemKind = "vocals" | "drums" | "bass" | "other";
 export type StudioTab = "lyrics" | "chords" | "sheet" | "takes";
+export type StudioPane = "mix" | "song" | "practice";
 export type MixPreset = "balanced" | "learn" | "guide" | "playAlong";
 
+/**
+ * Everything the studio shows survives a remount, because React unmounts this
+ * whole page for a trip to the Library and every `useState` in it goes with it.
+ * Three homes, decided once rather than per control:
+ *
+ * - here: anything the user aimed (which pane, which tab, which chart, how far
+ *   zoomed in). Song-scoped members are reset by `openSong`, not by remounting.
+ * - the URL: what identifies the view — the song id, the Library category.
+ * - local `useState`: only what is meaningless a second later — an open dialog,
+ *   a half-typed search, an in-flight progress fraction.
+ */
 export interface StudioState {
   playing: boolean;
   recording: boolean;
   metronome: boolean;
+  /** The song these song-scoped fields describe, so a remount is not mistaken for a new song. */
+  songId: string | null;
   tab: StudioTab;
+  /** Only consulted below 1024px, where the three panels no longer fit together. */
+  pane: StudioPane;
+  /** Selected user chord chart, which outlives the Chords tab that selects it. */
+  chartId: string | null;
   target: StemKind;
   muted: Record<StemKind, boolean>;
   soloed: Record<StemKind, boolean>;
@@ -30,6 +48,9 @@ export interface StudioState {
   toggleRecording(): void;
   toggleMetronome(): void;
   setTab(tab: StudioTab): void;
+  setPane(pane: StudioPane): void;
+  setChartId(chartId: string | null): void;
+  openSong(songId: string | null): void;
   setTarget(target: StemKind): void;
   toggleMute(stem: StemKind): void;
   toggleSolo(stem: StemKind): void;
@@ -65,7 +86,10 @@ export const useStudioStore = create<StudioState>((set) => ({
   playing: false,
   recording: false,
   metronome: true,
+  songId: null,
   tab: "lyrics",
+  pane: "song",
+  chartId: null,
   target: "vocals",
   muted: { ...stems },
   soloed: { ...stems },
@@ -84,6 +108,11 @@ export const useStudioStore = create<StudioState>((set) => ({
   toggleRecording: () => set((s) => ({ recording: !s.recording, playing: s.recording ? s.playing : true })),
   toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
   setTab: (tab) => set({ tab }),
+  setPane: (pane) => set({ pane }),
+  setChartId: (chartId) => set({ chartId }),
+  // A different song, not a remount: the zoom and the chart belong to the song
+  // that was open, and the pane and tab are how this user reads any song.
+  openSong: (songId) => set((s) => (s.songId === songId ? {} : { songId, zoom: 1, chartId: null })),
   setTarget: (target) => set({ target }),
   toggleMute: (stem) => set((s) => ({ muted: { ...s.muted, [stem]: !s.muted[stem] } })),
   toggleSolo: (stem) => set((s) => ({ soloed: { ...s.soloed, [stem]: !s.soloed[stem] } })),
@@ -106,8 +135,11 @@ export const useStudioStore = create<StudioState>((set) => ({
     if (preset === "playAlong") levels[state.target] = SILENT_DB;
     return { levels, muted: { ...stems }, soloed: { ...stems } };
   }),
-  resetPractice: (durationUs) => set({ zoom:1,target:"vocals",muted:{...stems},soloed:{...stems},levels:{...defaultLevels},speed:1,pitch:0,repetitions:4,pause:2,countIn:2,metronome:true,loopEnabled:false,loopStartUs:0,loopEndUs:Math.max(MIN_LOOP_US,durationUs) }),
-  hydratePractice: (document, durationUs) => set({ zoom:1,target:document.target,muted:{...stems},soloed:{...stems},levels:{...document.stemGainDb},speed:document.speed,pitch:document.pitchSemitones,repetitions:document.repetitions,pause:document.pauseSeconds,countIn:document.countIn,metronome:document.metronome,loopEnabled:document.loop.enabled,loopStartUs:Math.min(document.loop.startTimeUs,Math.max(0,durationUs-MIN_LOOP_US)),loopEndUs:Math.min(durationUs,Math.max(document.loop.endTimeUs,MIN_LOOP_US)) }),
+  // Practice state only. These run whenever the page mounts, so anything view
+  // shaped in here would be reset by a trip to the Library and back — that is
+  // what `openSong` is for.
+  resetPractice: (durationUs) => set({ target:"vocals",muted:{...stems},soloed:{...stems},levels:{...defaultLevels},speed:1,pitch:0,repetitions:4,pause:2,countIn:2,metronome:true,loopEnabled:false,loopStartUs:0,loopEndUs:Math.max(MIN_LOOP_US,durationUs) }),
+  hydratePractice: (document, durationUs) => set({ target:document.target,muted:{...stems},soloed:{...stems},levels:{...document.stemGainDb},speed:document.speed,pitch:document.pitchSemitones,repetitions:document.repetitions,pause:document.pauseSeconds,countIn:document.countIn,metronome:document.metronome,loopEnabled:document.loop.enabled,loopStartUs:Math.min(document.loop.startTimeUs,Math.max(0,durationUs-MIN_LOOP_US)),loopEndUs:Math.min(durationUs,Math.max(document.loop.endTimeUs,MIN_LOOP_US)) }),
   adjust: (key, delta) => set((s) => {
     const ranges = { speed: [.5, 1, .05], pitch: [-12, 12, 1], repetitions: [1, 999, 1], pause: [0, 10, 1], countIn: [0, 4, 2] } as const;
     const [min, max, step] = ranges[key];

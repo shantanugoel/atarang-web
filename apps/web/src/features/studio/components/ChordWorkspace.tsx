@@ -15,6 +15,7 @@ import {
 import { UNRELIABLE_CONFIDENCE } from "../../analysis/chordDetection";
 import { bestChordShape } from "../../chords/shapes";
 import { useCharts } from "../../chords/useCharts";
+import { useStudioStore } from "../studioStore";
 import { useChordAnalysis } from "../../chords/useChordAnalysis";
 import { uuidV7 } from "../../../storage/ids";
 import styles from "./ChordWorkspace.module.css";
@@ -158,7 +159,8 @@ export function ChordWorkspace({
 }) {
   const { charts, save, remove } = useCharts(originalId),
     analysis = useChordAnalysis(originalId),
-    [selectedId, setSelectedId] = useState<string>(),
+    selectedId = useStudioStore((state) => state.chartId),
+    setSelectedId = useStudioStore((state) => state.setChartId),
     [pasting, setPasting] = useState(false),
     [paste, setPaste] = useState(""),
     input = useRef<HTMLInputElement>(null);
