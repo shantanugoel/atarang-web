@@ -9,6 +9,11 @@ import { getBeatGrid,getBlob,getChordAnalysis,getWaveform,putBeatGrid,putChordAn
 const ALGORITHM_VERSION = "atarang-waveform/1" as const;
 const active = new Map<string, Promise<WaveformRecord>>();
 const activeStemChords = new Map<string, Promise<void>>();
+// Held apart from the promise so that a caller arriving mid-decode still gets
+// progress. The alternative — attaching the callback only to the call that
+// started the run — silently stops reporting the moment a re-render calls in
+// again, which is exactly when the song is long enough to need the report.
+const stemChordProgress = new Map<string, (fraction: number) => void>();
 
 function chordDocumentFrom(originalId: string, algorithmVersion: ChordAlgorithmV1, analysis: { segments: ChordAnalysisV1["segments"]; key: string | null }, now: string): ChordAnalysisV1 {
   // The detector reports the key it decoded against; a duration-weighted vote
@@ -18,7 +23,7 @@ function chordDocumentFrom(originalId: string, algorithmVersion: ChordAlgorithmV
   return { schema: "atarang.chords/1", originalId, revision: 0, algorithmVersion, key: analysis.key, confidence: durationTotal ? confidenceTotal / durationTotal : 0, segments: analysis.segments, updatedAt: now };
 }
 
-function runAnalysisWorker<T>(message: object, completeType: string, errorType: string) {
+function runAnalysisWorker<T>(message: object, completeType: string, errorType: string, onProgress?: { type: string; report: (frames: number) => void }) {
   const requestId = uuidV7();
   return new Promise<T>((resolve, reject) => {
     const worker = new Worker(runtimeAssets.analysisWorker, { type: "module", name: "atarang-analysis" });
@@ -26,6 +31,7 @@ function runAnalysisWorker<T>(message: object, completeType: string, errorType: 
       if (data.requestId !== requestId) return;
       if (data.type === completeType) { worker.terminate(); resolve(data as T); }
       if (data.type === errorType) { worker.terminate(); reject(new Error(data.code)); }
+      if (onProgress && data.type === onProgress.type) onProgress.report(data.frames);
     };
     worker.onerror = () => { worker.terminate(); reject(new Error("analysis_failed")); };
     worker.postMessage({ ...message, requestId });
@@ -38,9 +44,10 @@ function runAnalysisWorker<T>(message: object, completeType: string, errorType: 
  * The mixture pass has to guess harmony through the drums and the vocal line.
  * Once four stems exist there is a far better answer available, so it is taken.
  */
-export async function ensureStemChordAnalysis(original: OriginalRecord, separation: SeparationRecord) {
+export async function ensureStemChordAnalysis(original: OriginalRecord, separation: SeparationRecord, onProgress?: (fraction: number) => void) {
   const existing = await getChordAnalysis(original.id);
   if (existing?.document.algorithmVersion === "atarang-chroma/2-stems") return;
+  if (onProgress) stemChordProgress.set(original.id, onProgress); else stemChordProgress.delete(original.id);
   const running = activeStemChords.get(original.id);
   if (running) return running;
 
@@ -56,13 +63,16 @@ export async function ensureStemChordAnalysis(original: OriginalRecord, separati
 
     const durationUs = Math.round(separation.manifest.original.durationFrames / separation.manifest.original.sampleRate * 1_000_000);
     const beats = await getBeatGrid(original.id);
+    // The "other" stem is the one the worker counts frames against.
+    const stemFrames = separation.manifest.stems.find((stem) => stem.kind === "other")?.durationFrames ?? 0;
     const result = await runAnalysisWorker<{ segments: ChordAnalysisV1["segments"]; key: string | null }>(
       { type: "chords/analyze", songId: original.id, generation: 1, otherOpfsPath, bassOpfsPath, boundaries: chordBoundaries(beats?.document.beats.map((beat) => beat.timeUs) ?? [], beats?.document.reliable ?? false, durationUs) },
       "chords/complete", "chords/error",
+      stemFrames ? { type: "chords/progress", report: (frames) => stemChordProgress.get(original.id)?.(Math.min(1, frames / stemFrames)) } : undefined,
     );
     const now = new Date().toISOString();
     await putChordAnalysis({ id: original.id, originalId: original.id, schemaVersion: 1, createdAt: now, updatedAt: now, document: chordDocumentFrom(original.id, "atarang-chroma/2-stems", result, now) });
-  })().finally(() => activeStemChords.delete(original.id));
+  })().finally(() => { activeStemChords.delete(original.id); stemChordProgress.delete(original.id); });
 
   activeStemChords.set(original.id, promise);
   return promise;

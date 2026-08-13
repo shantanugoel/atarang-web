@@ -185,10 +185,12 @@ async function analyseStemChords(data: StemChordRequest, identity: object) {
   const other = await openMono(data.otherOpfsPath);
   const bass = await openMono(data.bassOpfsPath);
   const chroma = new ChromaStream(other.sampleRate);
+  let frames = 0;
   try {
     // The two stems are decoded in lockstep rather than buffered whole: a
     // twenty-minute pair would be several hundred megabytes of Float32.
     const readers = [other, bass].map((source) => ({ iterator: source.chunks()[Symbol.asyncIterator](), chunk: new Float32Array(0), offset: 0 }));
+    let lastProgress = 0;
     for (;;) {
       let exhausted = false;
       for (const reader of readers) {
@@ -208,10 +210,17 @@ async function analyseStemChords(data: StemChordRequest, identity: object) {
       }
       otherReader.offset += take;
       bassReader.offset += take;
+      frames += take;
+      // One message per second of audio, as the waveform pass does. The caller
+      // knows the stem length and turns this into a fraction.
+      if (frames - lastProgress >= other.sampleRate) { lastProgress = frames; self.postMessage({ type: "chords/progress", ...identity, frames }); }
     }
   } finally { other.dispose(); bass.dispose(); }
   chroma.finish();
 
+  // The last partial second, so the caller's bar reaches the end rather than
+  // stopping short while the Viterbi decode below runs.
+  self.postMessage({ type: "chords/progress", ...identity, frames });
   const decoded = detectChords(chroma.frames, chroma.hopSeconds, data.boundaries);
   self.postMessage({ type: "chords/complete", ...identity, segments: decoded.segments, key: keyName(decoded.key) });
 }

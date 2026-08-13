@@ -43,6 +43,7 @@ export function StudioPage() {
   const separationInput=useRef<HTMLInputElement>(null);
   const[separationProgress,setSeparationProgress]=useState<SeparationImportProgress|null>(null);
   const[separationSheet,setSeparationSheet]=useState(false);
+  const[chordProgress,setChordProgress]=useState<number|null>(null);
   // Only consulted below 1024px, where the three panels no longer fit together.
   const[pane,setPane]=useState<"mix"|"song"|"practice">("song");
   const[separationError,setSeparationError]=useState("");
@@ -54,7 +55,7 @@ export function StudioPage() {
   useEffect(() => { let active = true; if (!songId) { setOriginal(null); return; } setOriginal(undefined); void getOriginal(songId).then((record) => { if (active) setOriginal(record ?? null); }); return () => { active = false; }; }, [songId]);
   // Chords first decoded from the mixture are re-decoded from the stems, where
   // the drums and the vocal line are no longer voting on the harmony.
-  useEffect(()=>{if(original&&separation)void ensureStemChordAnalysis(original,separation)},[original,separation]);
+  useEffect(()=>{if(!original||!separation)return;let active=true;void ensureStemChordAnalysis(original,separation,fraction=>{if(active)setChordProgress(fraction)}).finally(()=>{if(active)setChordProgress(null)});return()=>{active=false;setChordProgress(null)}},[original,separation]);
   useEffect(()=>{if(original&&searchParams.get("separate")==="1"){setSeparationError("");setSeparationSheet(true);setSearchParams({}, {replace:true})}},[original,searchParams,setSearchParams]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -97,6 +98,8 @@ export function StudioPage() {
       </div>
       {(playback.error||playback.recordingError||separationError) && <div className={styles.playbackError} role="alert"><WarningCircle/>{playback.error||playback.recordingError||separationError}</div>}
       {separationProgress&&<div className={styles.separationProgress} role="status"><SpinnerGap className={styles.spin}/>{separationProgress.phase==="preflight"?"Checking four-stem package…":separationProgress.phase==="writing"?"Verifying and storing stems…":"Publishing separation…"}</div>}
+      {/* The chords on screen are about to change on their own. Say so, or it reads as a bug. */}
+      {chordProgress!==null&&!separationProgress&&<div className={styles.separationProgress} role="status"><SpinnerGap className={styles.spin}/>{`Re-reading chords from the separated stems… ${Math.round(chordProgress*100)}%`}</div>}
       <Transport importedPlayback={playback} waveform={waveform.waveform} waveformStatus={imported ? waveform.status : "ready"} beatGrid={beats.grid} stemsAvailable={Boolean(separation)} />
       {separationSheet&&original&&<SeparationSheet original={original} replacing={Boolean(separation)} onClose={()=>setSeparationSheet(false)} onImportPackage={()=>{setSeparationSheet(false);separationInput.current?.click()}} onCloudPackage={attachCloudSeparation} onLocalFailure={setSeparationError}/>}
     </div>
