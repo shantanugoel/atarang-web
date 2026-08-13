@@ -4,6 +4,20 @@ Date tested: 13 August 2026
 Test target: local Atarang web app at `http://localhost:4173`  
 Approach: black-box testing only. The application source code was not read or inspected. Cloud separation was excluded as requested because CUDA was unavailable.
 
+## Re-verification pass
+
+Date re-verified: 13 August 2026, against the app built from `36eaf4c`, five commits after the original pass (`7a80b4a..36eaf4c`: sing-along lyric gestures, library management, recording playback, chord voicing library, stem pan and meters).
+
+Method for this pass differs from the original: the running preview build was exercised as before, **and** the source was read to confirm each finding's cause and to distinguish "not reproduced today" from "actually fixed". The Green Day MP3 used originally was not available, so the bundled **Backbeat** demo was imported instead and the long-title Library case was reproduced by substituting a long title into the rendered row. Cloud and local separation were again not executed.
+
+Every finding below now carries a **Re-verified** line. Summary of what moved:
+
+- **Fixed:** none outright. Two findings are partly fixed — issue 11 (sing-along now has an explicit exit and a Resume follow control) and issue 9 (Simplify and Capo now reachable on mobile).
+- **Rewritten:** four descriptions. Issue 20 is the substantive change: its central claim was wrong, because analysis does not block the app, and its severity drops High → Medium. Issues 3, 9, and 11 were reworded to match surfaces rebuilt since the original pass — the Library table, the chart toolbar, and sing-along — narrowing each finding to the part that still reproduces.
+- **Regression found:** one. Sing-along no longer shows any chord information at all, where the original pass found a small chord strip; the change landed in the sing-along gestures commit (issue 11).
+- **Unchanged and re-reproduced:** issues 1, 2, 4, 5, 6, 7, 8, 10, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23.
+- Screenshots in this report are all from the original pass. Those for issues 3 and 9 no longer match the current markup, though the defects they illustrate persist; both are flagged in place. The rest still represent what is on screen today.
+
 ## Executive summary
 
 The core experience is promising: importing and playing a local song works, the detected chord changes and seeking are useful, mixer and looping controls are approachable, and the responsive design generally adapts to a phone-sized viewport. The most serious user-facing weaknesses are broken recovery on unknown routes, importing directly into Studio without an explicit processing/separation choice, and the Chords area lacking a coherent set of playback-oriented views.
@@ -58,6 +72,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** Power user, complete newbie, and everyone in between.
 - **Suggested improvement:** Turn this into a true scrolling **Timeline** view. Keep a playhead or the current chord anchored—preferably near the left third or center—while past chords move away and upcoming chords approach. Preserve tap/click-to-seek, visually emphasize the current chord, and allow users to pause automatic following when they manually scroll.
 - **Impact:** Fixing this creates an immediately readable rehearsal and performance view with useful look-ahead. Left as-is, users must rely mostly on two changing labels and cannot visually anticipate a longer progression.
+- **Re-verified:** Still valid, unchanged. The bar is a fixed-width flex row in which every detected segment is laid out proportionally to its duration, so the whole song is always compressed into one screen width and nothing moves as time passes. On a 46-second demo with two chords this looks deliberate; on a real song with the ~114 events measured in the first pass, each chord collapses to a few pixels. Only the highlight on the active segment changes during playback.
 
 ## 2. “Create editable chart” incorrectly combines view selection, customization, and editing
 
@@ -74,20 +89,22 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** All personas. Power users expect flexible transformations; newbies are likely to misunderstand the destructive-sounding label.
 - **Suggested improvement:** Replace **Create editable chart** as the presentation gateway with a visible **View** selector. Keep Transpose, Simplify, Capo, and other display/play transformations in a persistent shared toolbar that works in every view. Provide a separate **Edit** action only for correcting chords, timings, lyrics alignment, or sections, with explicit Save and Cancel behavior.
 - **Impact:** Fixing it makes every view musically useful and makes editing understandable. Left as-is, users must create a different artifact merely to transpose or simplify, then discover that the “editable” result offers little direct editing.
+- **Re-verified:** Still valid, unchanged, and confirmed to be destructive to the current presentation rather than additive. Creating a chart — or importing or pasting one — immediately and permanently replaces the detected timeline for that song; the detected view returns only when every chart for the song is deleted. The resulting chart screen still offers no way to edit a chord, a timing, or a section: the only per-chart controls are chart selection, Import, Export, Transpose, Simplify, Capo, and Delete.
 
 ## 3. Mobile Library actions overlap long song titles
 
 - **Category & Severity:** UI/UX — **High**. Core Library actions become hard to read and operate for realistic content.
-- **Description:** At a 390-pixel-wide viewport, action controls on the song card overlap or compete with the long imported song title. The content hierarchy breaks down and tap targets become visually ambiguous. Expected song metadata and actions to reflow into separate rows without collision.
+- **Description:** At a phone-width viewport, the row’s action controls overlap and obscure a long song title. The content hierarchy breaks down and tap targets become visually ambiguous. Expected song metadata and actions to reflow into separate rows without collision.
 - **Steps to reproduce:**
   1. Import or display a song with a long title, such as the Green Day test MP3.
   2. Navigate to **Library**.
-  3. Resize the viewport to approximately 390 × 844.
-  4. Inspect the song card’s title and right-side actions.
+  3. Resize the viewport to approximately 375–390 pixels wide.
+  4. Inspect the song row’s title and its right-side actions.
 - **Context:** Library, mobile layout, imported song with a long title.
 - **Affected persona(s):** All mobile users, especially complete newbies who rely on visible labels.
 - **Suggested improvement:** Reflow actions beneath the song information or use a clearly labelled overflow menu while preserving a generous, unambiguous primary open/play target.
 - **Impact:** Fixing it restores confidence and tap accuracy on mobile. Left as-is, users may trigger the wrong action or assume the Library does not properly support phones.
+- **Re-verified:** Still valid; the description above was rewritten because the Library has since been rebuilt from cards into a selectable table with categories, bulk actions, and inline preview. The defect survived the rebuild and is now easier to characterise. On mobile the row becomes a two-column grid: song information, then a fixed 96-pixel action column. The title truncates with an ellipsis as intended, but each original row carries five actions (**Open**, preview, **Separate**, remove-analysis, remove), which cannot fit 96 pixels and spill leftward across the truncated title. At 375 pixels the words **Open** and **Separate** rendered directly on top of the title text. The screenshot below is from the original card layout and no longer matches the current markup, but shows the same collision.
 
 ![Mobile Library title/action overlap](/Users/shantanugoel/.codex/visualizations/2026/08/13/019ffb2e-6d4b-7881-904a-ad8723a0b89a/library-mobile-overlap.png)
 
@@ -104,6 +121,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** Power users and everyone in between; newbies are especially unlikely to infer that deletion restores the previous view.
 - **Suggested improvement:** Provide a persistent, plainly labelled selector such as **Timeline**, **Chart**, and **Lyrics + Chords**. Treat detected versus user-corrected chords as a separate source/status choice, not as different views. Remember the user’s selected view per song or globally.
 - **Impact:** Fixing it lets users choose the right presentation for listening, practice, or performance without losing work. Left as-is, the app presents related layouts as unrelated workflows and makes deletion feel like navigation.
+- **Re-verified:** Still valid, unchanged. The only selector on the chart screen is a dropdown that chooses *which user chart* to show; it never offers the detected timeline as an option. Deleting the last chart remains the only route back, and the app does not warn that deletion is what restores the previous presentation.
 
 ## 5. Chord and lyrics presentation modes are implicit rather than selectable
 
@@ -118,6 +136,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** All personas. Power users need presentation control; newbies need clear purpose and defaults.
 - **Suggested improvement:** Add a **Lyrics + Chords** view that renders chords on a separate line above the corresponding lyric words, maintains alignment when text wraps, highlights or scrolls the current lyric/chord during playback, and can switch to lyrics-only or chords-only. Keep Transpose, Simplify, and Capo available here exactly as in the other chord views.
 - **Impact:** Fixing it turns several disconnected surfaces into one understandable musical workflow. Left as-is, users must hunt among tabs and still cannot get common rehearsal/performance layouts.
+- **Re-verified:** Still valid, unchanged, and re-reproduced directly. A lyric line written as `Walking down the [Bm] boulevard tonight` renders with the literal text `[Bm]` inline, in the Lyrics tab and in sing-along alike. Square-bracket notation is only interpreted in ChordPro charts pasted into the Chords tab, never in lyrics; there is still no view that positions chord names above the words where they change, and no lyrics-only or chords-only switch anywhere.
 
 ## 6. Lyrics and Sheet screens have unclear, overlapping purposes
 
@@ -132,6 +151,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** Complete newbie and casual users most strongly; also power users looking for a predictable workflow.
 - **Suggested improvement:** Rename them around their actual purpose, add a one-line explanation, or combine them as modes of one lyrics/chart screen—for example **Synced lyrics**, **Lead sheet**, and **Plain text**.
 - **Impact:** Fixing it lowers navigation friction and helps users choose correctly. Left as-is, users repeatedly switch tabs to rediscover what each one means.
+- **Re-verified:** Still valid, unchanged. **Sheet** is the song title followed by the same lyric lines as the Lyrics tab with their timings, chord strip, and controls stripped out; it has no controls of its own, no explanatory text, and no relationship to chord data despite the name suggesting a lead sheet. When no lyrics exist it reads “Import lyrics to build a practice sheet,” which is the only hint that it derives from the Lyrics tab. A fourth tab, **Takes**, has since been added alongside them and is clearly distinct, so the ambiguity is specific to Lyrics and Sheet.
 
 ![Sheet’s plain presentation](/Users/shantanugoel/.codex/visualizations/2026/08/13/019ffb2e-6d4b-7881-904a-ad8723a0b89a/sheet-plain-view.png)
 
@@ -149,6 +169,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** All personas, especially newbies who may fear losing or altering data.
 - **Suggested improvement:** Add a visible **Cancel** or close control, make the trigger toggle the panel, and support Escape when focus is inside the temporary editor.
 - **Impact:** Fixing it makes experimentation safe and keeps the Chords screen manageable. Left as-is, users must navigate away or refresh to clear unwanted UI.
+- **Re-verified:** Still valid, unchanged. The panel opens with a single **Add chart** button and nothing else; the trigger sets the panel open rather than toggling it, and no Escape handler is bound. Worth noting for contrast: the Separate-song sheet added since the original pass *does* close on Escape and restores focus, so the pattern exists in the codebase and simply has not reached this panel. One additional detail observed this pass: the textarea placeholder displays a literal `\n` — it reads `{title: Song}\n[Am]Lyrics with [F]chords` instead of breaking onto a second line, which misrepresents the format users are being asked to paste.
 
 ![Paste chart panel without a close action](/Users/shantanugoel/.codex/visualizations/2026/08/13/019ffb2e-6d4b-7881-904a-ad8723a0b89a/paste-chart-no-close.png)
 
@@ -164,22 +185,24 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** Complete newbie and casual users most strongly; all users are affected by inconsistent hierarchy.
 - **Suggested improvement:** Present both as matching acquisition cards with parallel titles, descriptions, controls, feedback, and responsive behavior: side by side on desktop and stacked on mobile.
 - **Impact:** Fixing it makes the first-use choice immediate and reduces the impression that one path is secondary or experimental. Left as-is, users may overlook one import method or misunderstand their relationship.
+- **Re-verified:** Still valid, and slightly worse on mobile. **Fetch from YouTube** is a full-width bordered section with a heading, explanatory copy, and its own form; **Import audio** is a single button in the page header, structurally unrelated to it. At phone width the import button loses its text label entirely and collapses into an unlabelled `+` square, while the YouTube section keeps its full heading and description — so the two acquisition paths read as even less like peers than on desktop. The screenshot below still represents the desktop arrangement accurately.
 
 ![Desktop Library acquisition area](/Users/shantanugoel/.codex/visualizations/2026/08/13/019ffb2e-6d4b-7881-904a-ad8723a0b89a/library-desktop.png)
 
 ## 9. Mobile chart customization toolbar is clipped
 
 - **Category & Severity:** UI/UX — **Medium**. Important controls are partially or completely unavailable on a supported layout.
-- **Description:** In the 390 × 844 editable-chart view, **Simplify** is cut off, transpose controls are not visible, and the delete action is hidden beyond the available width. There is no obvious horizontal-scroll cue or overflow menu. Expected all chart actions to reflow, wrap, or move into a labelled overflow menu.
+- **Description:** In the phone-width editable-chart view, transpose controls are unavailable and the delete action is cut off beyond the available width. There is no horizontal-scroll cue or overflow menu. Expected all chart actions to reflow, wrap, or move into a labelled overflow menu.
 - **Steps to reproduce:**
   1. Open a song and create an editable chart.
-  2. Resize to approximately 390 × 844.
+  2. Resize to approximately 375–390 pixels wide.
   3. Inspect the action toolbar above the chart.
-  4. Attempt to reach transpose, simplify, and delete controls.
+  4. Attempt to reach transpose, simplify, capo, and delete controls.
 - **Context:** Studio > Chords > User chart, mobile viewport.
 - **Affected persona(s):** All mobile users, especially power users who rely on these controls.
 - **Suggested improvement:** Wrap controls into multiple rows or group secondary actions under a clearly labelled **Chart options** menu. Keep the primary mode selector and edit action visible.
 - **Impact:** Fixing it gives mobile parity with desktop. Left as-is, phone users cannot reliably access the features that justify creating a chart.
+- **Re-verified:** Partly fixed, still valid, and the description above was updated. **Simplify** is now fully visible at 375 pixels and **Capo** is reachable in the chart header, so those two parts of the original finding no longer reproduce. Two problems remain, and the transpose one is more serious than “clipped” suggested: the transpose label, readout, and both stepper buttons are deliberately hidden below 760 pixels — a rule that predates the original pass — so transposition is not merely hard to reach on a phone, it is unavailable, with nothing on screen indicating the feature exists. The delete control is still cut off: the toolbar is a non-wrapping row measuring 384 pixels of content in a 375-pixel container with overflow visible, so the overhang neither wraps nor scrolls. The screenshot below predates these changes.
 
 ![Clipped mobile editable-chart controls](/Users/shantanugoel/.codex/visualizations/2026/08/13/019ffb2e-6d4b-7881-904a-ad8723a0b89a/chords-editable-mobile.png)
 
@@ -196,11 +219,12 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** Newbies and learners most strongly; also performers using diagrams as prompts.
 - **Suggested improvement:** Make the primary diagram follow the current chord, show the next chord as an optional secondary diagram, and allow selection of a chart chord to pin its fingering. Clearly indicate when diagrams are pinned.
 - **Impact:** Fixing it turns diagrams into useful live guidance. Left as-is, learners may play the wrong shape or conclude the chord analysis is inconsistent.
+- **Re-verified:** Still valid, unchanged. The diagram strip is the first four distinct chords found anywhere in the chart, computed once and never consulted against playback position; it is unlabelled, so nothing tells the user it is a summary rather than a cue. A chord-voicing library was added since the original pass, so a user’s own saved voicing now wins over the built-in shape and is marked “Your voicing” — but which four chords are drawn, and when, is unchanged.
 
 ## 11. Sing-along mode is not a complete performance view
 
 - **Category & Severity:** UI/UX — **Medium**. The immersive mode enlarges content but omits key context and control.
-- **Description:** Sing-along/fullscreen enlarges the lyrics, but keeps only a relatively small chord strip, continues to show literal inline notation such as `[Bm]`, and provides no obvious in-view transport controls. The active control remains labelled **Sing along**, which does not clearly communicate how to exit. Expected a purpose-built performance surface with readable chord/lyric hierarchy, minimal transport, and a clear exit affordance.
+- **Description:** Sing-along/fullscreen enlarges the lyrics, but shows no chord information at all, continues to show literal inline notation such as `[Bm]`, and provides no in-view transport controls. Expected a purpose-built performance surface with readable chord/lyric hierarchy, minimal transport, and a clear exit affordance.
 - **Steps to reproduce:**
   1. Open the song and select **Lyrics**.
   2. Select **Sing along**.
@@ -210,6 +234,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** Singers and casual users; power users performing from the app.
 - **Suggested improvement:** Provide large synced lyrics with an optional chords-above-words layout, current/next chord emphasis, tap-to-reveal transport, adjustable font size, and a clear **Exit sing along** action.
 - **Impact:** Fixing it makes the mode genuinely usable at a music stand or across a room. Left as-is, it is primarily a text enlargement rather than a dependable performance experience.
+- **Re-verified:** Partly fixed; the description above was updated. The exit problem is resolved: the mode now presents a header carrying the song title and an explicit **Exit sing-along** button, and a **Resume follow** control appears once the user scrolls away from the tracked line. The rest stands, and the chord part regressed. The compact chord strip is no longer merely small — it is removed entirely in sing-along, so the mode now shows no chords whatsoever. Inline `[Bm]` still renders literally. Sing-along is a fixed full-screen overlay that covers the transport bar, so there is no way to pause, seek, or loop without exiting, and there is still no font-size control.
 
 ## 12. Search state persists invisibly across Library category changes
 
@@ -224,6 +249,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** Complete newbie and casual users.
 - **Suggested improvement:** Show the active query as a persistent filter chip with a one-tap clear action, or reset it when changing categories and announce that behavior.
 - **Impact:** Fixing it prevents false empty states. Left as-is, users may believe songs have disappeared or another category is broken.
+- **Re-verified:** Still valid, unchanged, and now inconsistent with the app’s own treatment of view state. Since the original pass the selected category has been moved into the URL, so it survives Back and reload — but the search query deliberately has not, and it is also not cleared when the category changes. Selection state *is* cleared on both category and query changes. The result is that the one piece of state that silently filters the list is the one piece with no visible representation anywhere; only the input’s placeholder changes, from “Search originals” to “Search separated”.
 
 ## 13. Mobile Settings navigation is clipped
 
@@ -237,6 +263,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** All mobile users.
 - **Suggested improvement:** Use a native compact select, wrapped controls, or an explicitly scrollable tab row with edge cues.
 - **Impact:** Fixing it makes configuration dependable on phones. Left as-is, some settings appear unavailable.
+- **Re-verified:** Still valid, and marginally worse. A fifth section, **Chords**, has been added since the original pass, so more content competes for the same width. At 375 pixels the navigation shows Storage, Audio, Chords, and a truncated **M**, with Privacy entirely off-screen. The row is technically scrollable horizontally, so the sections are reachable, but there is no scrollbar, fade, or arrow to indicate that — which is precisely why this also appears as issue 23.
 
 ## 14. Every tested page uses the generic title “Atarang Studio”
 
@@ -249,6 +276,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** Power users and anyone using multiple tabs or assistive navigation history.
 - **Suggested improvement:** Use route- and song-specific page titles.
 - **Impact:** Fixing it improves orientation, history scanning, bookmarking, and multi-tab use. Left as-is, every page is indistinguishable outside the content area.
+- **Re-verified:** Still valid, unchanged. The title is set once in the page shell and never updated; nothing in the app writes to it on navigation. Every route — Library, Settings, the demo preview, and each individual song — reports **Atarang Studio**.
 
 ---
 
@@ -268,6 +296,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** All personas. Newbies miss guidance; power users lose workflow control.
 - **Suggested improvement:** After file selection, show a concise choice: **Open and analyze**, **Separate stems**, or **Open without processing**, with expected time/resource notes and a remembered default for experienced users.
 - **Impact:** Fixing it makes the app’s core promise understandable and gives users control over processing time and outputs. Left as-is, users may believe separation happened, is unavailable, or must be found later.
+- **Re-verified:** Still valid for the **Import audio** path, but the remaining work is smaller than it was. A **Separate this song** sheet now exists and offers exactly the kind of choice this finding asked for — local on this device, cloud on your server, or a verified package, each with its readiness stated — and it opens automatically when a song is entered with the separation intent set. The Library already uses that route from its per-song **Separate** action and from the demo’s **Add & separate**. Choosing **Import audio** still bypasses it entirely and lands the user in Studio with no choice offered. The fix is now largely a matter of routing local import through the sheet that already exists, plus adding an explicit “open without processing” option and a remembered default.
 
 ## 16. Unknown routes expose a developer-facing React Router error page
 
@@ -282,6 +311,7 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** All personas; especially complete newbies, who may interpret the app as crashed.
 - **Suggested improvement:** Show a friendly “Page not found” screen with **Go to Library**, **Go back**, and optional diagnostic detail hidden behind a disclosure.
 - **Impact:** Fixing it turns a dead end into a one-click recovery and improves trust. Left as-is, malformed bookmarks and stale links strand users on a developer error page.
+- **Re-verified:** Still valid, unchanged, and re-reproduced verbatim. The router defines only the three real routes and declares neither a catch-all nor an error element, so the framework’s built-in developer page is what unknown paths render — white-on-black **Unexpected Application Error!**, **404 Not Found**, “Hey developer 👋”, and advice to supply an `ErrorBoundary`, with no navigation of any kind and none of the app’s own shell. Worth contrasting with the app’s own handling of a *known* route with a missing song, which is already correct: opening a removed song ID gives “Song not found”, a plain explanation, and a **Return to Library** link. That page is the model the not-found route should follow.
 
 ![Developer-facing unknown-route error](/Users/shantanugoel/.codex/visualizations/2026/08/13/019ffb2e-6d4b-7881-904a-ad8723a0b89a/unknown-route-error.png)
 
@@ -299,21 +329,23 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** Power users importing charts and newbies copying text from another source.
 - **Suggested improvement:** Validate before replacing the current chart, point to the offending line/directive, show a small valid example, and keep the user’s text intact for repair.
 - **Impact:** Fixing it prevents corrupted-looking charts and makes import self-correcting. Left as-is, users cannot distinguish unsupported syntax from a broken importer.
+- **Re-verified:** Still valid, unchanged, and re-reproduced exactly. Pasting `{title:` and pressing **Add chart** created a chart titled after the song, whose single lyric line is the literal text `{title:`. The parser recognises a directive only when the whole line matches a complete `{name: value}` form and treats anything else as lyrics, so an unclosed or misspelled directive can never fail — it silently becomes song text. Two consequences make this worse than a cosmetic problem: the paste panel closes and discards the user’s text, so there is nothing left to correct; and, per issue 2, the new chart immediately replaces the detected chord timeline for that song.
 
 ## 18. Demo tempo analysis can remain stuck on “Analyzing”
 
 - **Category & Severity:** Functionality — **Medium**. A musical metadata feature never reaches a result or explainable failure for bundled content.
 - **Description:** The bundled **Backbeat** demo continued to display **“Analyzing”** for tempo during the test, while the imported Green Day MP3 showed `165 BPM`. Expected the demo to complete, state that tempo is unavailable, or offer a retry after a reasonable timeout.
 - **Steps to reproduce:**
-  1. Open **Library**.
-  2. Open the bundled **Backbeat** demo.
-  3. Wait for tempo analysis and navigate among Studio tabs.
+  1. Open **Studio** without opening a song, so the bundled **Backbeat** demo preview loads.
+  2. Select the **Practice** panel and find the **Tempo** row.
+  3. Wait, and navigate among Studio tabs.
   4. Refresh and revisit if needed.
   5. Observe that the tempo remains **“Analyzing”**.
 - **Context:** Studio for bundled Backbeat demo; comparison made with imported MP3.
 - **Affected persona(s):** All personas, especially musicians expecting tempo-dependent practice tools.
 - **Suggested improvement:** Replace indefinite progress with a bounded state: result, **Tempo unavailable**, or **Retry analysis**. Explain if bundled/demo audio does not support analysis.
 - **Impact:** Fixing it makes system status trustworthy. Left as-is, users cannot tell slow processing from a permanent failure.
+- **Re-verified:** Still valid, unchanged, and the cause is now identified precisely. The condition is not the demo audio and not slowness: it is the **demo preview** route reached by opening Studio without a song. That route plays bundled audio that was never imported into the library, so no analysis job is ever started for it, and the Tempo readout renders “Analyzing” as its fallback whenever no beat grid exists. The state is therefore permanent by construction and would never resolve however long a user waits. Adding the same demo to the library and opening it produces a real BPM, confirming the analysis path itself is healthy. The word “Analyzing” is asserting work that is not happening.
 
 ## 19. User-facing errors expose raw parsing and URL-construction messages
 
@@ -328,28 +360,30 @@ No data-loss condition or consistently reproducible crash was found. The importe
 - **Affected persona(s):** Complete newbie most strongly; also all users trying to diagnose a failed fetch.
 - **Suggested improvement:** State what is valid, for example: “Enter a full YouTube video URL, such as `https://www.youtube.com/watch?v=…`.” For server failures, say the fetch failed and offer retry without exposing response-parser text.
 - **Impact:** Fixing it turns errors into recovery instructions. Left as-is, users cannot tell whether the URL, network, source, or app is at fault.
+- **Re-verified:** Still valid, unchanged, and present in a second place not noted originally. The YouTube fetch failure path renders the raw exception message directly, so any parser or network error text reaches the user verbatim. The same pattern appears in **Settings > Cloud processing**, where a failed server check reports `Server check failed:` followed by the raw message, and where an unparseable server origin raises the browser’s own “Failed to construct 'URL': Invalid URL”. Both should be fixed together. Note that the app already does this well elsewhere — import failures, model operations, and LRCLIB lookups all map error codes to plain-language sentences — so this is an inconsistency rather than a missing capability.
 
 ---
 
 # Performance observations
 
-## 20. Chord detection can block the experience without explaining its progress
+## 20. Chord detection reports no status of its own, and the Chords tab denies it is running
 
-- **Category & Severity:** Performance — **High**. A headline analysis task can prevent or delay normal use while providing too little status or control.
-- **Description:** Chord detection is presented as work the user must wait for rather than a background task with a clear lifecycle. When detection or re-analysis is running, users do not get a useful progress indication explaining whether the job has started, how far it has progressed, or whether they can continue using the rest of the song. This makes a long calculation feel frozen. Expected the page, playback, and other Studio tabs to remain usable while chords are analyzed, with an honest visible status in the Chords area and at song level.
+- **Category & Severity:** Performance — **Medium**, revised down from High in the original pass. Analysis does not block the app; what is missing is honest status while it runs.
+- **Description:** While a newly imported song is being analyzed, the Chords tab shows an empty state reading **“No chord chart yet — Run chord detection, import ChordPro, or paste a chart.”** That message denies that anything is in progress and names an action, *Run chord detection*, that the interface does not actually offer anywhere. Chords then appear on their own with no completion signal. The only visible status during this period is **“Analyzing waveform…”** on the transport, which names the waveform, so a user watching the Chords tab has no reason to connect it to the chords they are waiting for. Expected an honest status in the Chords area itself, distinguishing “running”, “finished with no result”, and “failed”.
 - **Steps to reproduce:**
   1. Start from Library with a newly imported song that has not completed chord analysis.
   2. Open the song and navigate to **Chords** while analysis is running.
-  3. Attempt to use playback, switch Studio tabs, or navigate away and return.
-  4. Observe whether the rest of the page remains interactive and whether the interface clearly shows analysis state, progress, cancellation, failure, and completion.
+  3. Read the empty state and look for any indication that work is under way, and for the **Run chord detection** action it names.
+  4. Wait for chords to appear and observe whether anything marks completion.
 - **Context:** Import and Studio workflows while initial chord detection or later re-analysis is in progress. This also applies when detected chords are upgraded after another processing step.
-- **Affected persona(s):** All personas. Newbies may assume the app is broken; casual users may abandon the song; power users need control over expensive work.
-- **Suggested improvement:** Run chord analysis non-blockingly and keep the rest of Studio usable. Show a persistent status such as **Analyzing chords — 42%** in the Chords tab and song header when real progress is measurable; otherwise use an honest indeterminate progress indicator with the current stage rather than a fake percentage. Preserve the task across tab changes, notify the user when it completes, and provide **Cancel** and **Retry** where safe. If automatic analysis is optional, offer **Analyze chords now** plus an **Automatically analyze imported songs** preference. A sensible default is automatic background analysis for most users, with on-demand control for users who want to save time, battery, or processing resources.
-- **Impact:** Fixing it lets users start listening or working immediately and makes analysis feel dependable. Left as-is, legitimate computation is indistinguishable from a hang, and forcing all users to wait adds friction even when they do not need chords.
+- **Affected persona(s):** All personas. Newbies may conclude the feature failed and start pasting a chart by hand; casual users may abandon the song; power users need control over expensive work.
+- **Suggested improvement:** Give the Chords tab its own status. While the job runs, say so there — with a real percentage where progress is measurable, and an honest indeterminate indicator naming the current stage where it is not — instead of an empty state that describes the song as having no chords. Reserve **“No chord chart yet”** for songs whose analysis has genuinely finished without a usable result, and either implement the **Run chord detection** action that text promises or stop naming it. Mark completion, and offer **Cancel** and **Retry** where safe. If automatic analysis is to become optional, add an **Automatically analyze imported songs** preference, defaulting to on.
+- **Impact:** Fixing it makes analysis legible and stops the app from reporting a false negative during normal operation. Left as-is, the interface actively misinforms users during the one window in which they are most likely to be watching it.
+- **Re-verified:** The original finding’s central claim does not hold and has been rewritten above; the severity is reduced accordingly. Analysis is **already** a non-blocking background job: it runs in a worker, playback starts immediately, Studio tabs and panels stay interactive throughout, and navigating away and back does not restart it. Nothing in the tested scope forced a user to wait. What survives is the status problem, now stated more precisely — the misleading empty state, the absence of any chord-specific progress, and the `Run chord detection` action named in copy but not implemented. One part of the app already does this correctly and is worth copying: the stem re-decode after separation announces itself as **“Re-reading chords from the separated stems… 42%”** with a real percentage. That is exactly the treatment the first analysis pass lacks.
 
-Apart from the blocking/status problem above, no consistently reproducible rendering or playback slowdown was found in the tested scope.
+Apart from the status problem above, no consistently reproducible rendering or playback slowdown was found in the tested scope.
 
-The imported track loaded and played, rapid repeated playback interactions did not produce a visible crash, the detected timeline containing approximately 114 chord events remained responsive, and clicking a later chord sought promptly and continued playback. The Backbeat tempo state that remained on **“Analyzing”** is classified as Functionality because the UI provided no evidence that work was actively progressing or merely slow.
+The imported track loaded and played, rapid repeated playback interactions did not produce a visible crash, the detected timeline containing approximately 114 chord events remained responsive, and clicking a later chord sought promptly and continued playback. The Backbeat tempo state that remained on **“Analyzing”** is classified as Functionality, and the re-verification pass confirmed it is a permanent state on the demo preview route rather than slow work — see issue 18.
 
 This does not substitute for measurement on low-end phones, a large library, very long audio, or a throttled network. Those environments were not available in this pass.
 
@@ -370,6 +404,7 @@ This does not substitute for measurement on low-end phones, a large library, ver
 - **Affected persona(s):** Keyboard-only users, users with motor impairments, screen-reader users, and power users expecting efficient navigation.
 - **Suggested improvement:** Implement the conventional tab keyboard model: Left/Right arrows change the active tab, Home/End move to the first/last tab, Tab leaves the tablist, and visible focus is always retained.
 - **Impact:** Fixing it provides predictable keyboard access and faster expert navigation. Left as-is, some users must tab through many controls or use a pointer to switch core views.
+- **Re-verified:** Still valid, unchanged. The tab row declares the correct roles but binds no key handling at all, and every tab stays in the sequential tab order rather than using a roving tabindex, so neither half of the expected model is present. A fourth tab, **Takes**, has been added since the original pass, lengthening the run of tab stops. The app is not without keyboard support in general — the waveform slider handles arrows for seek and zoom, and the separation sheet handles Escape — which makes the tab row a gap rather than a policy.
 
 ## 22. Mixer controls expose duplicate accessible names
 
@@ -383,6 +418,7 @@ This does not substitute for measurement on low-end phones, a large library, ver
 - **Affected persona(s):** Screen-reader and voice-control users; also keyboard users when focus styling is subtle.
 - **Suggested improvement:** Use unique user-facing names such as **“Mute vocals track”**, **“Solo vocals track”**, and **“Vocals volume”**, while avoiding nested or duplicate interactive targets for one action.
 - **Impact:** Fixing it makes the mixer operable without sight and improves voice-command reliability. Left as-is, users may activate the wrong control or be unable to understand which duplicate is focused.
+- **Re-verified:** Still valid, unchanged, and the duplication is now pinpointed. Each stem channel carries two separate controls that both toggle mute: a compact **M** button, named `Mute Vocals` unconditionally, and a speaker icon whose name alternates between `Mute Vocals` and `Unmute Vocals` with state. Whenever the stem is unmuted — the default for all four — both controls announce as `Mute Vocals`, giving four duplicate pairs. The alternating name is also a second problem in itself, since a control that renames itself on activation is hard to target by voice. Pan sliders and level meters, added since the original pass, are correctly and uniquely named.
 
 ## 23. Clipped mobile controls create accessibility barriers beyond visual polish
 
@@ -397,21 +433,24 @@ This does not substitute for measurement on low-end phones, a large library, ver
 - **Affected persona(s):** Low-vision users, keyboard/switch users, users with motor impairments, and all mobile users.
 - **Suggested improvement:** Reflow controls without loss at narrow widths and high zoom; use a labelled overflow menu only for secondary actions, and keep focus from moving invisibly off-screen.
 - **Impact:** Fixing it preserves feature access under zoom and on small devices. Left as-is, actions can be present in theory but unreachable in practice.
+- **Re-verified:** Still valid, unchanged, and now shown to have two distinct failure modes rather than one. In Settings the navigation does scroll horizontally, so the hidden sections are reachable by someone who guesses to try — the defect is the missing affordance. In the chart toolbar the overflow does not scroll at all, so the clipped delete control is genuinely unreachable at phone width, and the transpose controls are hidden outright (see issue 9). The second case is the more serious of the two and should not be treated as the same polish item.
 
 ---
 
 # Reference-issue verification
 
+Statuses below are as of the re-verification pass; where the pass changed a status or its reasoning, the note says so.
+
 | Previously reported issue | Current status | Verification result |
 |---|---|---|
-| Import opens Studio instead of allowing separation first | **Still broken** | The selected MP3 navigated directly to Studio without a processing/separation choice. |
-| “Fetch from YouTube” banner is misaligned in Library | **Fixed visually** | The banner itself appeared aligned in the tested desktop Library layout. |
-| YouTube fetch and local import do not match as peer boxes | **Still broken** | They still use inconsistent component styles and hierarchy instead of matching responsive cards. |
-| Paste chart has no way to close | **Still broken** | No close/cancel control; the trigger did not toggle it closed and Escape did not dismiss it. |
-| After separation, Chords has no detect option; detected chords appear only after refresh | **Partially verified / not reproduced in the non-separation path** | For the imported non-separated MP3, detected chords were available without refresh. The exact post-separation path could not be run because cloud separation was excluded. |
-| Difference between Sheet and Lyrics is confusing | **Still broken** | Their different purposes remain unexplained and overlapping. |
-| No simplification, capo, or similar chord options | **Partially fixed** | Transpose, Simplify, Capo, and diagrams were available only after creating a user chart. They should be shared controls available in every chord view, and mobile access was clipped. |
-| Need lyrics-only, chords-only, and chords-above-words views | **Partially addressed** | Lyrics includes a detected chord strip, but there is no explicit view system, lyrics-only/chords-only switch, or proper chords-above-words layout. |
+| Import opens Studio instead of allowing separation first | **Still broken** | Local import still navigates straight to Studio. A separation choice sheet now exists and is used by the Library’s own **Separate** action, but the import path does not route through it. See issue 15. |
+| “Fetch from YouTube” banner is misaligned in Library | **Fixed** | Re-confirmed aligned on desktop and at phone width. |
+| YouTube fetch and local import do not match as peer boxes | **Still broken** | YouTube is a full section with heading and copy; import is a header button that loses its label entirely on mobile. |
+| Paste chart has no way to close | **Still broken** | No close/cancel control; the trigger does not toggle it closed and no Escape handler is bound. |
+| After separation, Chords has no detect option; detected chords appear only after refresh | **Partially verified; refresh requirement not reproduced** | Detected chords appear without refresh, and the post-separation re-decode now announces itself with a live percentage. The full post-separation path still could not be run, as separation was again not executed. |
+| Difference between Sheet and Lyrics is confusing | **Still broken** | Sheet remains an unexplained plain rendering of the Lyrics content. |
+| No simplification, capo, or similar chord options | **Partially fixed** | Transpose, Simplify, Capo, and diagrams remain available only after creating a user chart. On mobile, Simplify and Capo are now reachable, but transpose is hidden outright and delete is clipped. |
+| Need lyrics-only, chords-only, and chords-above-words views | **Partially addressed** | Unchanged: Lyrics carries a compact detected chord strip, but there is still no view system, no lyrics-only/chords-only switch, and no chords-above-words layout. |
 
 ---
 
@@ -463,7 +502,7 @@ This order follows the method used in `AUDIT.md`: each phase produces a coherent
 
 ## Phase 1 — unblock the core flow and restore trust
 
-1. **Issue 20 · Chord detection can block the experience without explaining its progress** — make analysis a background task first, because every later Chords view depends on users being able to reach and use the page while it runs. Add real progress/stages, completion feedback, cancel/retry, and an on-demand/automatic preference.
+1. **Issue 20 · Chord detection reports no status of its own, and the Chords tab denies it is running** — analysis is already a background task, so the remaining work is status: replace the misleading “No chord chart yet” empty state with a real running/finished/failed state in the Chords tab, mark completion, add cancel/retry, and either implement or remove the **Run chord detection** action the copy already promises. The stem re-decode’s live percentage is the pattern to copy.
 2. **Issue 15 · Local import bypasses the separation/processing choice** — let users decide whether to open, analyze chords, or separate stems rather than silently committing them to one path.
 3. **Issue 18 · Demo tempo analysis can remain stuck on “Analyzing”** — every analysis job needs a bounded success, unavailable, failure, or retry state.
 4. **Issue 16 · Unknown routes expose a developer-facing React Router error page** — replace the dead end with a branded recovery route.
@@ -473,7 +512,7 @@ This order follows the method used in `AUDIT.md`: each phase produces a coherent
 8. **Issue 21 · Studio tabs do not support conventional arrow-key navigation** — establish predictable keyboard access to every Studio view.
 9. **Issue 22 · Mixer controls expose duplicate accessible names** — remove ambiguity for screen-reader and voice-control users.
 
-**Phase outcome:** importing and analysis no longer trap or mystify the user; failures recover cleanly; the main Studio navigation is operable with keyboard and assistive technology.
+**Phase outcome:** importing and analysis no longer mystify the user; failures recover cleanly; the main Studio navigation is operable with keyboard and assistive technology.
 
 ## Phase 2 — make Chords a coherent playback and practice workspace
 
@@ -501,7 +540,11 @@ This order follows the method used in `AUDIT.md`: each phase produces a coherent
 
 ## Ordering notes
 
-**Issue 20 before Issues 1–5.** Additional Chords views do not help if analysis makes the page feel blocked. Establish the background job and its states before attaching more presentations to its output.
+**Issue 20 before Issues 1–5.** Weaker than originally stated, now that analysis is confirmed not to block the page — but still the right order. Each new Chords view needs a defined answer for “chords are not here yet”, and issue 20 is where that answer gets defined; building three views first means writing that empty state three times.
+
+**Issue 17 and issue 2 are the same defect seen twice.** Malformed pasted input replaces the detected timeline irreversibly precisely because chart creation is the view gateway. Separating view from content (issue 2) removes most of issue 17’s consequence, so validation can be built against the already-separated model rather than retrofitted twice.
+
+**Issue 15 is now mostly wiring.** The separation choice sheet exists and works; local import simply does not route through it. This is smaller than the original pass implied and can move early in Phase 1 cheaply.
 
 **Issue 2 before Issues 1, 4, and 5.** View, transformation, source, and editing state need to be separated conceptually before building individual views; otherwise each new view risks acquiring its own incompatible controls.
 
