@@ -1,11 +1,15 @@
-.transport { z-index: 10; display: grid; grid-template-rows: 102px 92px; border-top: 1px solid var(--line-strong); background: #0e1115; }
+.transport { z-index: 10; display: grid; grid-template-rows: 106px 92px; border-top: 1px solid var(--line-strong); background: #0e1115; }
 .waveform { position: relative; padding: 12px 20px 8px; border-bottom: 1px solid var(--line-strong); overflow: hidden; }
 /* Native overflow scrolling does the panning; only the level the peaks are read
    from changes with zoom. A touch drag pans, a tap still seeks. */
 .scroller { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .track { position: relative; }
-.times { position: relative; height: 12px; color: var(--text-muted); font: 10px var(--font-mono); }
-.times span { position: absolute; top: 0; padding-left: 3px; border-left: 1px solid var(--line-strong); }
+/* Also the loop lane: a drag here writes A–B, so it takes the pointer rather
+   than panning, and the labels stay out of the way of the gesture. */
+.times { position: relative; height: 16px; color: var(--text-muted); font: 10px var(--font-mono); cursor: col-resize; touch-action: none; }
+.times:hover { background: rgba(255,255,255,.05); }
+.times span { position: absolute; top: 0; padding-left: 3px; border-left: 1px solid var(--line-strong); pointer-events: none; }
+.loopBrace { position: absolute; z-index: 1; inset-block: 0; background: var(--accent); opacity: .55; pointer-events: none; }
 .bars { position: relative; height: 63px; margin-top: 4px; cursor: crosshair; touch-action:pan-x; outline:none; }
 .bars:focus-visible{box-shadow:inset 0 0 0 2px var(--focus)}
 .waveShape{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.waveShape path{fill:#767d89;opacity:.9}.waveShape line{stroke:#c3c7ce;stroke-opacity:.16;stroke-width:1}
@@ -41,4 +45,4 @@ button.chip:hover{border-color:var(--danger);color:white}
 .secondary button:last-child { color: var(--danger); }
 /* Only skip-to-start and skip-to-end go: seeking by ten seconds and the click
    track are how you practise a bar, so they stay on a phone. */
-@media(max-width:760px){ .transport { grid-template-rows: 80px 84px; }.waveform{padding-inline:10px}.overlay{right:12px;bottom:6px}.controls{grid-template-columns:auto 1fr auto;padding:0 8px}.time{gap:6px}.time strong{font-size:18px}.time b,.time span{display:none}.mainControls{justify-content:center;gap:2px}.mainControls button:first-child,.mainControls button:nth-child(5){display:none}.mainControls button,.secondary button{width:38px;height:38px}.mainControls .play{width:52px;height:46px}.secondary{gap:0;padding-left:6px}.bars{height:43px}}
+@media(max-width:760px){ .transport { grid-template-rows: 84px 84px; }.waveform{padding-inline:10px}.overlay{right:12px;bottom:6px}.controls{grid-template-columns:auto 1fr auto;padding:0 8px}.time{gap:6px}.time strong{font-size:18px}.time b,.time span{display:none}.mainControls{justify-content:center;gap:2px}.mainControls button:first-child,.mainControls button:nth-child(5){display:none}.mainControls button,.secondary button{width:38px;height:38px}.mainControls .play{width:52px;height:46px}.secondary{gap:0;padding-left:6px}.bars{height:43px}}

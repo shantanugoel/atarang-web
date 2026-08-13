@@ -232,3 +232,21 @@ test("playback survives leaving the Studio, and says what is playing",async({pag
   await expect(page.getByRole("button",{name:"Pause",exact:true})).toHaveAttribute("aria-pressed","true");
   await expect(page.getByRole("region",{name:"Now playing"})).toBeHidden();
 });
+
+test("dragging the ruler above the waveform sets the A–B loop",async({page,isMobile})=>{
+  await page.goto("/studio");
+  const lane=page.locator('[title^="Drag to set the A–B loop"]'),box=(await lane.boundingBox())!;
+  const y=box.y+box.height/2;
+  // Right to left, because that is the direction that used to fight the minimum length.
+  await page.mouse.move(box.x+box.width*.6,y);
+  await page.mouse.down();
+  await page.mouse.move(box.x+box.width*.25,y,{steps:8});
+  await page.mouse.up();
+  await expect(page.getByRole("button",{name:"Clear loop"})).toBeVisible();
+  await expect(page.getByRole("button",{name:"Disable loop"})).toHaveAttribute("aria-pressed","true");
+  if(isMobile)await page.getByRole("button",{name:"Practice",exact:true}).click();
+  // The demo runs 46 seconds, so a quarter to three fifths of it is about 11.5 to 27.6.
+  const seconds=async(name:string)=>{const text=await page.getByRole("button",{name}).innerText();const[minutes,rest]=text.split("\n").at(-1)!.split(":");return Number(minutes)*60+Number(rest)};
+  expect(await seconds("Set loop start at playhead")).toBeCloseTo(11.5,0);
+  expect(await seconds("Set loop end at playhead")).toBeCloseTo(27.6,0);
+});

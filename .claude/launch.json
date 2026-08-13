@@ -5,7 +5,8 @@
       "name": "atarang-preview",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "--cwd", "apps/web", "preview"],
-      "port": 4173
+      "port": 4173,
+      "autoPort": true
     }
   ]
 }

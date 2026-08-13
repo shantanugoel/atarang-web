@@ -58,6 +58,8 @@ export interface StudioState {
   setMasterLevel(level: number): void;
   setLoopStart(timeUs: number, durationUs: number): void;
   setLoopEnd(timeUs: number, durationUs: number): void;
+  /** Both boundaries at once, for a drag: setting them one at a time makes a right-to-left drag fight the minimum length. */
+  setLoop(startUs: number, endUs: number, durationUs: number): void;
   toggleLoop(): void;
   clearLoop(durationUs: number): void;
   zoomBy(steps: number): void;
@@ -120,6 +122,10 @@ export const useStudioStore = create<StudioState>((set) => ({
   setMasterLevel: (masterLevel) => set({ masterLevel: Math.max(-60, Math.min(0, masterLevel)) }),
   setLoopStart: (timeUs, durationUs) => set((state) => { const start = Math.max(0, Math.min(Math.round(timeUs), Math.max(0, durationUs - MIN_LOOP_US))); return { loopStartUs: start, loopEndUs: Math.min(durationUs, Math.max(state.loopEndUs, start + MIN_LOOP_US)), loopEnabled: true }; }),
   setLoopEnd: (timeUs, durationUs) => set((state) => { const end = Math.min(durationUs, Math.max(MIN_LOOP_US, Math.round(timeUs))); return { loopStartUs: Math.max(0, Math.min(state.loopStartUs, end - MIN_LOOP_US)), loopEndUs: end, loopEnabled: true }; }),
+  setLoop: (startUs, endUs, durationUs) => {
+    const start = Math.max(0, Math.min(Math.round(Math.min(startUs, endUs)), durationUs - MIN_LOOP_US));
+    set({ loopStartUs: start, loopEndUs: Math.min(durationUs, Math.max(Math.round(Math.max(startUs, endUs)), start + MIN_LOOP_US)), loopEnabled: true });
+  },
   toggleLoop: () => set((state) => ({ loopEnabled: !state.loopEnabled })),
   clearLoop: (durationUs) => set({ loopEnabled: false, loopStartUs: 0, loopEndUs: Math.max(MIN_LOOP_US, durationUs) }),
   zoomBy: (steps) => set((state) => ({ zoom: stepZoom(state.zoom, steps) })),

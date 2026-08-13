@@ -34,6 +34,27 @@ describe("view state across a remount",()=>{
   });
 });
 
+describe("loop drag",()=>{
+  test("a right-to-left drag sets the same loop as a left-to-right one",()=>{
+    state().setLoop(90_000_000,30_000_000,240_000_000);
+    expect([state().loopStartUs,state().loopEndUs]).toEqual([30_000_000,90_000_000]);
+    expect(state().loopEnabled).toBe(true);
+  });
+  test("a drag shorter than the minimum still leaves a loop worth playing",()=>{
+    state().setLoop(10_000_000,10_050_000,240_000_000);
+    expect(state().loopEndUs-state().loopStartUs).toBe(500_000);
+  });
+  test("clamps to the song, including a drag that ends past it",()=>{
+    state().setLoop(-5_000_000,900_000_000,240_000_000);
+    expect([state().loopStartUs,state().loopEndUs]).toEqual([0,240_000_000]);
+  });
+  test("a drag against the far end keeps the minimum length inside the song",()=>{
+    state().setLoop(239_900_000,240_000_000,240_000_000);
+    expect(state().loopStartUs).toBe(239_500_000);
+    expect(state().loopEndUs).toBe(240_000_000);
+  });
+});
+
 describe("mix presets",()=>{
   test("Learn lifts the selected stem and lowers the band, without muting it",()=>{
     state().setTarget("bass");

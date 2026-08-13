@@ -4,7 +4,7 @@ import type { ImportedPlayback } from "../useImportedAudio";
 import type { WaveformRecord } from "../../../storage/database";
 import type {BeatGridV1} from "@atarang/contracts";
 import { useEffect, useMemo, useRef } from "react";
-import { MAX_ZOOM, PEAKS_PER_SCREEN, displayPeaks, formatTime, timeTicks } from "../waveformView";
+import { MAX_ZOOM, PEAKS_PER_SCREEN, displayPeaks, formatTime, snapToBeat, timeTicks } from "../waveformView";
 import styles from "./Transport.module.css";
 
 export function Transport({ importedPlayback, waveform, waveformStatus = "idle",beatGrid,stemsAvailable = false }: { importedPlayback?: ImportedPlayback | undefined; waveform?: WaveformRecord | null | undefined; waveformStatus?: "idle"|"analyzing"|"ready"|"error";beatGrid?:BeatGridV1|null|undefined;stemsAvailable?:boolean }) {
@@ -18,6 +18,7 @@ export function Transport({ importedPlayback, waveform, waveformStatus = "idle",
   const peaks = useMemo(() => displayPeaks(waveform, PEAKS_PER_SCREEN*zoom), [waveform,zoom]);
   const {step,ticks}=useMemo(()=>timeTicks(durationUs,zoom),[durationUs,zoom]);
   const waveformRef=useRef<HTMLDivElement>(null),scrollerRef=useRef<HTMLDivElement>(null);
+  const loopDrag=useRef<{anchorUs:number;anchorX:number}|null>(null);
   const waveformPath=useMemo(()=>{const points=peaks.map((height,index)=>[index/Math.max(1,peaks.length-1)*1000,Math.max(4,height/52*44)] as const);if(!points.length)return"";const upper=points.map(([x,y])=>`${x.toFixed(1)},${(50-y).toFixed(1)}`).join(" L "),lower=[...points].reverse().map(([x,y])=>`${x.toFixed(1)},${(50+y).toFixed(1)}`).join(" L ");return`M ${upper} L ${lower} Z`},[peaks]);
   const waveformReady = !imported || waveformStatus === "ready";
   const position = `${Math.min(100, Math.max(0, currentTimeUs / durationUs * 100))}%`;
@@ -25,6 +26,9 @@ export function Transport({ importedPlayback, waveform, waveformStatus = "idle",
   const loopWidth = `${Math.min(100, Math.max(0, (state.loopEndUs-state.loopStartUs) / durationUs * 100))}%`;
   const beatStride=Math.max(1,Math.ceil((beatGrid?.beats.length??0)/(600*zoom)));
   const toggle = () => importedPlayback ? void importedPlayback.toggle() : state.togglePlaying();
+  // The ruler is the loop lane, the way a DAW brace is: dragging the waveform
+  // itself already seeks, and a loop is worth more than a second gesture on it.
+  const laneTimeUs=(event:React.PointerEvent<HTMLDivElement>)=>{const bounds=event.currentTarget.getBoundingClientRect(),ratio=bounds.width?Math.max(0,Math.min(1,(event.clientX-bounds.left)/bounds.width)):0;return snapToBeat(ratio*durationUs,beatGrid,event.altKey)};
   const seekFromPointer=(event:React.PointerEvent<HTMLDivElement>)=>{if(!importedPlayback?.ready)return;const bounds=waveformRef.current?.getBoundingClientRect();if(!bounds)return;const ratio=Math.max(0,Math.min(1,(event.clientX-bounds.left)/bounds.width));importedPlayback.seekTo(ratio*durationUs/1_000_000)};
   // Zoomed in, the playhead leaves the screen within seconds. Recentre only once
   // it reaches the edge, so a view the user scrolled to stays put while it is
@@ -34,7 +38,14 @@ export function Transport({ importedPlayback, waveform, waveformStatus = "idle",
     <div className={styles.waveform}>
       <div ref={scrollerRef} className={styles.scroller}>
         <div className={styles.track} style={{width:`${zoom*100}%`}}>
-          <div className={styles.times}>{ticks.map((second)=><span key={second} style={{left:`${second*1_000_000/durationUs*100}%`}}>{formatTime(second*1_000_000,step<1?1:0).replace(/^0/,"")}</span>)}</div>
+          <div className={styles.times} title="Drag to set the A–B loop. Hold Alt to ignore the beat grid."
+            onPointerDown={event=>{if(event.button!==0)return;event.currentTarget.setPointerCapture(event.pointerId);loopDrag.current={anchorUs:laneTimeUs(event),anchorX:event.clientX}}}
+            // A context menu can swallow the release, so a pointer with nothing held down ends the drag rather than dragging the loop under the cursor.
+            onPointerMove={event=>{const drag=loopDrag.current;if(!drag)return;if(!event.buttons){loopDrag.current=null;return}if(Math.abs(event.clientX-drag.anchorX)<4)return;state.setLoop(drag.anchorUs,laneTimeUs(event),durationUs)}}
+            onPointerUp={()=>{loopDrag.current=null}} onPointerCancel={()=>{loopDrag.current=null}}>
+            {ticks.map((second)=><span key={second} style={{left:`${second*1_000_000/durationUs*100}%`}}>{formatTime(second*1_000_000,step<1?1:0).replace(/^0/,"")}</span>)}
+            {state.loopEnabled&&<span className={styles.loopBrace} style={{left:loopLeft,width:loopWidth}} aria-hidden="true"/>}
+          </div>
           {/* A touch drag pans the zoomed view, so touch seeks on release: the
               browser cancels the pointer once it takes the gesture as a scroll,
               which leaves a tap seeking and a pan not. A mouse still drags to seek. */}
