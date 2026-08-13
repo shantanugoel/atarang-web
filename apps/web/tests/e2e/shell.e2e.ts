@@ -10,7 +10,7 @@ test("production shell is isolated and the bundled demo really plays",async({pag
 
 test("authorized YouTube acquisition exposes server and browser separation choices",async({page,isMobile})=>{let suppliedKey="";await page.addInitScript(()=>sessionStorage.setItem("atarang.cloud.configuration",JSON.stringify({origin:"http://127.0.0.1:4173",deploymentKey:"a".repeat(64)})));await page.route("http://127.0.0.1:4173/api/v1/capabilities",async route=>{suppliedKey=await route.request().headerValue("X-Atarang-Key")??"";await route.fulfill({json:{cloudEnabled:true,youtubeEnabled:true}})});await page.goto("/library");const local=page.getByRole("region",{name:"Import local audio"}),youtube=page.getByRole("region",{name:"Fetch from YouTube"}),localAction=local.getByRole("button",{name:"Choose audio",exact:true}),submit=youtube.getByRole("button",{name:"Fetch and separate"});await expect(local).toBeVisible();await expect(youtube).toBeVisible();await expect(localAction).toBeVisible();const[localBox,youtubeBox,localHeading,youtubeHeading]=await Promise.all([local.boundingBox(),youtube.boundingBox(),local.getByRole("heading").boundingBox(),youtube.getByRole("heading").boundingBox()]);expect(Math.round(localBox!.width)).toBe(Math.round(youtubeBox!.width));expect(Math.round(localHeading!.x-localBox!.x)).toBe(Math.round(youtubeHeading!.x-youtubeBox!.x));if(isMobile)expect(youtubeBox!.y).toBeGreaterThan(localBox!.y+localBox!.height);else expect(Math.round(youtubeBox!.y)).toBe(Math.round(localBox!.y));await expect(page.getByLabel("YouTube URL")).toBeVisible();expect(await localAction.evaluate(element=>getComputedStyle(element).backgroundColor)).toBe(await submit.evaluate(element=>getComputedStyle(element).backgroundColor));await page.getByLabel("YouTube URL").fill("https://www.youtube.com/watch?v=Ajxn0PKbv7I");await expect(submit).toBeDisabled();await page.getByLabel("I confirm I am authorized to download and process this content.").check();await expect(submit).toBeEnabled();await page.getByLabel(/Fetch only; separate in this browser/).check();await expect(page.getByRole("button",{name:"Fetch to browser"})).toBeEnabled();expect(suppliedKey).toBe("a".repeat(64))});
 
-test("YouTube submission works when randomUUID is unavailable on an HTTP origin",async({page})=>{let idempotencyKey="";await page.addInitScript(()=>{Object.defineProperty(crypto,"randomUUID",{value:undefined,configurable:true});sessionStorage.setItem("atarang.cloud.configuration",JSON.stringify({origin:"http://127.0.0.1:4173",deploymentKey:"a".repeat(64)}))});await page.route("http://127.0.0.1:4173/api/v1/capabilities",route=>route.fulfill({json:{cloudEnabled:true,youtubeEnabled:true}}));await page.route("http://127.0.0.1:4173/api/v1/jobs",async route=>{idempotencyKey=await route.request().headerValue("Idempotency-Key")??"";await route.fulfill({json:{jobId:"019fef4f-9c77-7a3f-94ca-ef4214a806c1",capabilityToken:"canary-capability",state:"acquiring_youtube"}})});await page.route("http://127.0.0.1:4173/api/v1/jobs/019fef4f-9c77-7a3f-94ca-ef4214a806c1",route=>route.fulfill({json:{state:"failed",stage:"failed",progress:.1}}));await page.goto("/library");await page.getByLabel("YouTube URL").fill("https://www.youtube.com/watch?v=Ajxn0PKbv7I");await page.getByLabel("I confirm I am authorized to download and process this content.").check();await page.getByRole("button",{name:"Fetch and separate"}).click();await expect(page.getByRole("alert")).toContainText("failed");expect(idempotencyKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)});
+test("YouTube submission works when randomUUID is unavailable on an HTTP origin",async({page})=>{let idempotencyKey="";await page.addInitScript(()=>{Object.defineProperty(crypto,"randomUUID",{value:undefined,configurable:true});sessionStorage.setItem("atarang.cloud.configuration",JSON.stringify({origin:"http://127.0.0.1:4173",deploymentKey:"a".repeat(64)}))});await page.route("http://127.0.0.1:4173/api/v1/capabilities",route=>route.fulfill({json:{cloudEnabled:true,youtubeEnabled:true}}));await page.route("http://127.0.0.1:4173/api/v1/jobs",async route=>{idempotencyKey=await route.request().headerValue("Idempotency-Key")??"";await route.fulfill({json:{jobId:"019fef4f-9c77-7a3f-94ca-ef4214a806c1",capabilityToken:"canary-capability",state:"acquiring_youtube"}})});await page.route("http://127.0.0.1:4173/api/v1/jobs/019fef4f-9c77-7a3f-94ca-ef4214a806c1",route=>route.fulfill({json:{state:"failed",stage:"failed",progress:.1}}));await page.goto("/library");await page.getByLabel("YouTube URL").fill("https://www.youtube.com/watch?v=Ajxn0PKbv7I");await page.getByLabel("I confirm I am authorized to download and process this content.").check();await page.getByRole("button",{name:"Fetch and separate"}).click();await expect(page.getByRole("alert")).toContainText("The server could not finish this job");expect(idempotencyKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)});
 
 test("supported compact layout has no horizontal overflow and keeps transport visible",async({page,isMobile})=>{test.skip(!isMobile,"compact layout project only");await page.goto("/studio");const layout=await page.evaluate(()=>({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,transport:document.querySelector('[aria-label="Waveform and transport"]')?.getBoundingClientRect().bottom}));expect(layout.scrollWidth).toBe(layout.viewport);expect(layout.transport).toBeLessThanOrEqual(await page.evaluate(()=>innerHeight));await expect(page.getByRole("tab",{name:"Takes"})).toBeVisible()});
 
@@ -22,7 +22,7 @@ test("chord and settings controls reflow at 320 CSS pixels",async({page,isMobile
 
 test("cloud operator configuration is session-only and precache excludes private routes",async({page,request})=>{await page.route("http://127.0.0.1:4173/api/v1/capabilities",route=>route.fulfill({json:{cloudEnabled:true}}));await page.goto("/settings");await page.getByLabel("Server origin").fill("http://127.0.0.1:4173/path");await page.getByLabel("Deployment key").fill("a".repeat(64));await page.getByRole("button",{name:"Save and test"}).click();await expect(page.getByText("Server capability verified for this session.")).toBeVisible();const stored=await page.evaluate(()=>sessionStorage.getItem("atarang.cloud.configuration"));expect(stored).toContain("http://127.0.0.1:4173");expect(stored).toContain("a".repeat(64));const precache=await request.get("/precache.json");expect(precache.ok()).toBeTruthy();const paths=await precache.json() as string[];expect(paths.some(path=>path.endsWith(".map")||path.startsWith("/api/")||path.startsWith("/models/"))).toBeFalsy()});
 
-test("a rejected deployment key is not saved",async({page})=>{await page.route("http://127.0.0.1:4173/api/v1/capabilities",route=>route.fulfill({status:401,json:{error:{code:"invalid_source"}}}));await page.goto("/settings");await page.getByLabel("Server origin").fill("http://127.0.0.1:4173");await page.getByLabel("Deployment key").fill("random-key");await page.getByRole("button",{name:"Save and test"}).click();await expect(page.getByText(/Deployment key rejected/)).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem("atarang.cloud.configuration"))).toBeNull()});
+test("a rejected deployment key is not saved",async({page})=>{await page.route("http://127.0.0.1:4173/api/v1/capabilities",route=>route.fulfill({status:401,json:{error:{code:"invalid_source"}}}));await page.goto("/settings");await page.getByLabel("Server origin").fill("http://127.0.0.1:4173");await page.getByLabel("Deployment key").fill("random-key");await page.getByRole("button",{name:"Save and test"}).click();await expect(page.getByText(/deployment key was rejected/i)).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem("atarang.cloud.configuration"))).toBeNull()});
 
 test("Signalsmith worklet loads from its same-origin runtime module",async({page})=>{const cspErrors:string[]=[];page.on("console",message=>{if(message.type()==="error"&&message.text().includes("Content Security Policy"))cspErrors.push(message.text())});await page.goto("/studio");await page.getByRole("button",{name:"Play",exact:true}).click();const result=await page.evaluate(async()=>{const paths=await fetch("/precache.json").then(response=>response.json()) as string[];const moduleUrl=paths.find(path=>path.includes("SignalsmithStretch"));if(!moduleUrl)return"missing";const module=await import(moduleUrl);module.default.moduleUrl=moduleUrl;const context=new AudioContext();const node=await module.default(context,{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});node.disconnect();await context.close();return"loaded"});expect(result).toBe("loaded");expect(cspErrors).toEqual([])});
 
@@ -68,7 +68,7 @@ test("an installed WebGPU model works without a benchmark and reports inference 
   await expect(page.getByText("Ready · RTF 0.75")).toBeVisible();
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"unbenchmarked.wav",mimeType:"audio/wav",buffer:silentWav()});
-  await page.getByRole("button",{name:"Separate song"}).click();
+  await expect(page.getByRole("slider",{name:"Song waveform. Click or drag to seek"})).toBeVisible();
   const dialog=page.getByRole("dialog",{name:"Separate this song"});
   await expect(dialog.getByRole("button",{name:"Start local"})).toBeEnabled();
   await dialog.getByRole("button",{name:"Start local"}).click();
@@ -89,7 +89,6 @@ test("a running model test blocks concurrent separation and can be cancelled",as
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"busy-model.wav",mimeType:"audio/wav",buffer:silentWav()});
   await expect(page.getByRole("slider",{name:"Song waveform. Click or drag to seek"})).toBeVisible();
-  await page.getByRole("button",{name:"Separate song"}).click();
   const dialog=page.getByRole("dialog",{name:"Separate this song"});
   await expect(dialog.getByRole("button",{name:"Start local"})).toBeEnabled();
   await dialog.getByRole("button",{name:"Start local"}).click();
@@ -111,7 +110,6 @@ test("browser separation falls back to the processor when there is no WebGPU ada
   await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"cpu-fallback.wav",mimeType:"audio/wav",buffer:silentWav()});
-  await page.getByRole("button",{name:"Separate song"}).click();
   const dialog=page.getByRole("dialog",{name:"Separate this song"});
   await expect(dialog.getByRole("button",{name:"Start local"})).toBeEnabled();
   await expect(dialog.getByText(/runs on the processor/)).toBeVisible();
@@ -126,7 +124,6 @@ test("browser separation stays disabled when the quick WebGPU probe fails",async
   await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"unsupported-webgpu.wav",mimeType:"audio/wav",buffer:silentWav()});
-  await page.getByRole("button",{name:"Separate song"}).click();
   const dialog=page.getByRole("dialog",{name:"Separate this song"});
   await expect(dialog.getByRole("button",{name:"Unavailable here"})).toBeDisabled();
   await expect(dialog.getByText(/could not check WebGPU availability/)).toBeVisible();
@@ -144,7 +141,6 @@ test("a stalled storage preflight times out with a persistent explanation",async
   // what a user waits out by looking at the waveform appear.
   await expect(page.getByRole("slider",{name:"Song waveform. Click or drag to seek"})).toBeVisible();
   await page.evaluate(()=>Object.defineProperty(navigator.storage,"estimate",{value:()=>new Promise(()=>{}),configurable:true}));
-  await page.getByRole("button",{name:"Separate song"}).click();
   const dialog=page.getByRole("dialog",{name:"Separate this song"});
   await dialog.getByRole("button",{name:"Start local"}).click();
   // Either the preflight is still running or it has already given up; racing the
@@ -248,11 +244,13 @@ test("a saved guitar voicing replaces the catalogue across songs",async({page,is
     await page.getByLabel("Choose audio to import").setInputFiles({name,mimeType:"audio/wav",buffer:silentWav(44_100)});
     await expect(page).toHaveURL(/\/studio\/[0-9a-f-]+/);
     songUrl=page.url();
+    await page.getByRole("button",{name:"Skip for now and just play the song"}).click();
     if(isMobile)await page.getByRole("button",{name:"Song",exact:true}).click();
     await page.getByRole("tab",{name:"Chords"}).click();
     await page.getByRole("button",{name:"Paste chart"}).click();
     await page.getByLabel("Paste ChordPro chart").fill(`{title: ${name}}\n[C]Shared voicing`);
     await page.getByRole("button",{name:"Add chart"}).click();
+    await page.getByRole("button",{name:"Show C diagram"}).click();
     await expect(page.getByText("Your voicing")).toBeVisible();
     await expect(page.getByRole("img",{name:"C guitar chord diagram"})).toBeVisible();
   }
@@ -263,6 +261,8 @@ test("a saved guitar voicing replaces the catalogue across songs",async({page,is
   await page.goto(songUrl);
   if(isMobile)await page.getByRole("button",{name:"Song",exact:true}).click();
   await page.getByRole("tab",{name:"Chords"}).click();
+  await page.getByLabel("View").selectOption("chart");
+  await page.getByRole("button",{name:"Show C diagram"}).click();
   await expect(page.getByText("Your voicing")).toBeHidden();
   await expect(page.getByRole("img",{name:"C guitar chord diagram"})).toBeVisible();
   await page.getByRole("navigation",{name:"Primary navigation"}).getByRole("link",{name:"Settings"}).click();
@@ -288,9 +288,11 @@ test("the Library previews sources and bulk removal preserves shared media",asyn
   await page.goto("/library");
   await page.getByLabel("Choose audio to import").setInputFiles({name:"Library A.wav",mimeType:"audio/wav",buffer:silentWav()});
   await expect(page).toHaveURL(/\/studio\//);
+  await page.getByRole("button",{name:"Skip for now and just play the song"}).click();
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"Library B.wav",mimeType:"audio/wav",buffer:silentWav()});
   await expect(page).toHaveURL(/\/studio\//);
+  await page.getByRole("button",{name:"Skip for now and just play the song"}).click();
   await page.getByRole("link",{name:"Library"}).click();
   await expect(page.getByRole("button",{name:/^Originals/})).toContainText(/KB/);
   await page.getByRole("button",{name:"Preview Library B"}).click();
@@ -397,6 +399,7 @@ test("sing-along follows timed lyrics and turns lyric gestures into a loop",asyn
   const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
   await page.goto("/library");
   await page.getByLabel("Choose audio to import").setInputFiles({name:"sing-along.wav",mimeType:"audio/wav",buffer:silentWav(2_205_000)});
+  await page.getByRole("button",{name:"Skip for now and just play the song"}).click();
   await page.getByLabel("Choose LRC lyrics").setInputFiles({name:"sing-along.lrc",mimeType:"text/plain",buffer:Buffer.from("[00:00.00]First line\n[00:20.00]Second line\n[00:40.00]Third line")});
   await page.getByRole("button",{name:"Sing along"}).click();
   await expect(page).toHaveURL(/sing=1/);
@@ -405,19 +408,20 @@ test("sing-along follows timed lyrics and turns lyric gestures into a loop",asyn
   await page.mouse.wheel(0,200);
   await expect(page.getByRole("button",{name:"Resume follow"})).toBeVisible();
   await page.getByRole("button",{name:"Resume follow"}).click();
-  const first=page.getByRole("button",{name:/First line/}),second=page.getByRole("button",{name:/Second line/}),firstBox=(await first.boundingBox())!,secondBox=(await second.boundingBox())!;
+  await page.waitForTimeout(700);
+  const first=page.getByRole("button",{name:/First line/}),second=page.getByRole("button",{name:/Second line/}),third=page.getByRole("button",{name:/Third line/});
   if(isMobile){
-    const touch={pointerId:1,pointerType:"touch",button:0,buttons:1,bubbles:true};
-    await first.dispatchEvent("pointerdown",touch);await page.waitForTimeout(550);await first.dispatchEvent("pointerup",{...touch,buttons:0});
-    await first.dispatchEvent("pointerdown",touch);await second.dispatchEvent("pointerover",touch);await second.dispatchEvent("pointerup",{...touch,buttons:0});
+    const pointer={pointerId:1,pointerType:"touch",button:0,buttons:1,bubbles:true};
+    await first.dispatchEvent("pointerdown",pointer);await page.waitForTimeout(550);await first.dispatchEvent("pointerup",{...pointer,buttons:0});
+    await first.dispatchEvent("pointerdown",pointer);await second.dispatchEvent("pointerover",pointer);await second.dispatchEvent("pointerup",{...pointer,buttons:0});
   }else{
-    await page.mouse.move(firstBox.x+firstBox.width/2,firstBox.y+firstBox.height/2);await page.mouse.down();await page.waitForTimeout(550);await page.mouse.up();
-    await page.mouse.move(firstBox.x+firstBox.width/2,firstBox.y+firstBox.height/2);await page.mouse.down();await page.mouse.move(secondBox.x+secondBox.width/2,secondBox.y+secondBox.height/2,{steps:6});await page.mouse.up();
+    await second.hover();await page.mouse.down();await page.waitForTimeout(550);await page.mouse.up();
+    await second.hover();await page.mouse.down();await third.hover();await page.mouse.up();
   }
   await page.getByRole("button",{name:"Exit sing-along"}).click();
   if(isMobile)await page.getByRole("button",{name:"Practice",exact:true}).click();
-  await expect(page.getByRole("button",{name:"Set loop start at playhead"})).toContainText("00:00.000");
-  await expect(page.getByRole("button",{name:"Set loop end at playhead"})).toContainText("00:40.000");
+  await expect(page.getByRole("button",{name:"Set loop start at playhead"})).toContainText(isMobile?"00:00.000":"00:20.000");
+  await expect(page.getByRole("button",{name:"Set loop end at playhead"})).toContainText(isMobile?"00:40.000":"00:45.000");
   expect(errors).toEqual([]);
 });
 
