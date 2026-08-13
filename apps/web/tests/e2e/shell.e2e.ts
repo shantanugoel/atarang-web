@@ -152,6 +152,7 @@ test("a stalled storage preflight times out with a persistent explanation",async
 test("saved separated songs enable independent stem controls",async({page,isMobile})=>{
   const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
   const originalId="019fef4f-9c77-7a3f-94ca-ef4214a806d1",staleOriginalId="019fef4f-9c77-7a3f-94ca-ef4214a806d0",separationId="019fef4f-9c77-7a3f-94ca-ef4214a806d2",sha="a".repeat(64),now="2026-08-11T00:00:00.000Z";
+  await page.addInitScript(()=>{const nodes:StereoPannerNode[]=[];Object.defineProperty(window,"__atarangPanners",{value:nodes});const create=AudioContext.prototype.createStereoPanner;AudioContext.prototype.createStereoPanner=function(){const node=create.call(this);nodes.push(node);return node}});
   await page.goto("/");
   await page.evaluate(async({originalId,staleOriginalId,separationId,sha,now})=>{
     await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction(["originals","separations"],"readwrite"),original={id:originalId,schemaVersion:1,createdAt:now,updatedAt:now,title:"Separated fixture",artist:"Test",sourceFileName:"fixture.wav",sourceMediaType:"audio/wav",byteLength:44,durationUs:1_000_000,contentSha256:sha,blobId:`sha256:${sha}`},stems=["vocals","drums","bass","other"].map(kind=>({kind,blobId:`sha256:${sha}`,sampleRate:44_100,channels:2,durationFrames:44_100,variants:[{encoding:"pcm-f32le-wav",mediaType:"audio/wav",byteLength:44,sha256:sha}]})),manifest={schema:"atarang.separation/1",separationId,original:{originalId:staleOriginalId,contentSha256:sha,sourceMediaType:"audio/wav",sampleRate:44_100,channels:2,durationFrames:44_100},model:{modelId:"htdemucs-4stem",artifactVersion:"test",artifactSha256:sha,upstream:"facebookresearch/demucs htdemucs",license:"MIT"},pipeline:{implementation:"server-pytorch",implementationVersion:"test",decodeVersion:"test",preprocessVersion:"test",segmentFrames:343_980,overlapFrames:85_995,shifts:1,postprocessVersion:"test"},stems,provenance:{mode:"local",createdAt:now}};transaction.objectStore("originals").put(original);transaction.objectStore("separations").put({id:separationId,originalId:staleOriginalId,schemaVersion:1,createdAt:now,updatedAt:now,manifest,bindings:Object.fromEntries(stems.map(stem=>[stem.kind,stem.blobId]))});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}});
@@ -165,7 +166,7 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
     const root=await navigator.storage.getDirectory(),directory=await root.getDirectoryHandle("blobs",{create:true}),handle=await directory.getFileHandle(`${sha}.wav`,{create:true});
     const writable=await handle.createWritable();await writable.write(new Uint8Array(bytes));await writable.close();
     return new Promise<boolean>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("blobs","readwrite"),now=new Date().toISOString();transaction.objectStore("blobs").put({id:`sha256:${sha}`,schemaVersion:1,createdAt:now,updatedAt:now,sha256:sha,byteLength:bytes.length,mediaType:"audio/wav",opfsPath:`blobs/${sha}.wav`,referenceCount:4});transaction.oncomplete=()=>{db.close();resolve(true)};transaction.onerror=()=>reject(transaction.error)}});
-  },{sha,bytes:[...silentWav()]})).toBe(true);
+  },{sha,bytes:[...constantWav(8_000)]})).toBe(true);
   await page.goto("/library");
   await page.getByRole("button",{name:"Separated 1"}).click();
   await expect(page.getByText("Separated fixture",{exact:true})).toBeVisible();
@@ -178,6 +179,15 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
   await vocals.focus();
   await page.keyboard.press("ArrowDown");
   await expect(vocals).toHaveValue("-0.5");
+  const vocalPan=page.getByRole("slider",{name:"Vocals pan"}),vocalMeter=page.getByRole("meter",{name:"Vocals live level"});
+  await vocalPan.fill("-0.65");
+  await expect(vocalPan).toHaveValue("-0.65");
+  await expect.poll(()=>page.evaluate(()=>((window as unknown as {__atarangPanners:StereoPannerNode[]}).__atarangPanners[0]?.pan.value))).toBeCloseTo(-.65,2);
+  await page.getByRole("button",{name:"Play",exact:true}).click();
+  await expect.poll(async()=>Number(await vocalMeter.getAttribute("aria-valuenow"))).toBeGreaterThan(0);
+  await page.getByRole("button",{name:"Mute Vocals",exact:true}).first().click();
+  await expect.poll(async()=>Number(await vocalMeter.getAttribute("aria-valuenow"))).toBe(0);
+  await page.getByRole("button",{name:"Pause",exact:true}).click();
   await expect(page.getByRole("slider",{name:/Master level/})).toHaveValue("0");
   await page.getByRole("link",{name:"Library"}).click();
   await expect(page.getByRole("link",{name:"Separate again"})).toBeVisible();
@@ -185,6 +195,8 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
   const replaceDialog=page.getByRole("dialog",{name:"Separate this song again"});
   await expect(replaceDialog).toBeVisible();
   await replaceDialog.getByRole("button",{name:"Close separation options"}).click();
+  if(isMobile)await page.getByRole("button",{name:"Mix",exact:true}).click();
+  await expect(page.getByRole("slider",{name:"Vocals pan"})).toHaveValue("-0.65");
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByRole("button",{name:/^Separated/}).click();
   page.once("dialog",dialog=>dialog.accept());

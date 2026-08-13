@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OriginalRecord } from "../../storage/database";
+import type { StemKind } from "@atarang/contracts";
 import { fileForOpfsPath } from "../../storage/opfs";
 import { getBlob } from "../../storage/repositories";
 
@@ -13,6 +14,7 @@ export interface ImportedPlayback {
   underruns?: number;
   repetition?: number;
   metronomeClicks?:number;
+  meters?:Record<StemKind,number>;
   recording?:boolean;
   recordingError?:string;
   toggleRecording?():Promise<void>;

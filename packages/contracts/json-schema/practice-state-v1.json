@@ -27,6 +27,11 @@
       "required": ["vocals", "drums", "bass", "other"],
       "properties": { "vocals": {"type":"number"}, "drums": {"type":"number"}, "bass": {"type":"number"}, "other": {"type":"number"} }
     },
+    "stemPan": {
+      "type": "object", "additionalProperties": false,
+      "required": ["vocals", "drums", "bass", "other"],
+      "properties": { "vocals": {"type":"number","minimum":-1,"maximum":1}, "drums": {"type":"number","minimum":-1,"maximum":1}, "bass": {"type":"number","minimum":-1,"maximum":1}, "other": {"type":"number","minimum":-1,"maximum":1} }
+    },
     "sections": {
       "type": "array",
       "items": {

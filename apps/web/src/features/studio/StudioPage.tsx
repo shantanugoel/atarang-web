@@ -51,7 +51,7 @@ export function StudioPage() {
         {(["mix","song","practice"] as const).map(item=><button key={item} aria-pressed={pane===item} onClick={()=>setPane(item)}>{item[0]!.toUpperCase()+item.slice(1)}</button>)}
       </nav>
       <div className={styles.workspace} data-pane={pane}>
-        <Mixer available={Boolean(separation)} />
+        <Mixer available={Boolean(separation)} meters={playback.meters??{}} />
         <LyricsWorkspace originalId={original?.id} songTitle={original?.title ?? DEMO_TRACK.title} artistName={original?.artist} durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} seekTo={playback.seekTo} />
         <PracticeInspector durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} stemsAvailable={Boolean(separation)} beatGrid={beatGrid} setTempo={setTempo} />
       </div>

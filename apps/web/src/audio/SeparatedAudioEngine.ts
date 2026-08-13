@@ -9,7 +9,7 @@ const HEADER_BYTES = 8 * Int32Array.BYTES_PER_ELEMENT;
 const RING_SECONDS = 3;
 
 interface RingDescriptor { kind: StemKind; sab: SharedArrayBuffer; capacityFrames: number }
-export interface StemMixerState { gain: number; muted: boolean; solo: boolean }
+export interface StemMixerState { gain: number; pan:number; muted: boolean; solo: boolean }
 export interface PracticePlaybackSettings { loopEnabled: boolean; loopStartUs: number; loopEndUs: number; repetitions: number; pauseSeconds: number }
 export interface DspPlaybackSettings { speed: number; pitchSemitones: number }
 export interface MetronomePlaybackSettings {enabled:boolean;countIn:0|2|4;beats:{timeUs:number;downbeat:boolean}[]}
@@ -30,7 +30,10 @@ export interface SeparatedPlaybackSnapshot {
   underruns: number;
   repetition: number;
   metronomeClicks:number;
+  meters:Record<StemKind,number>;
 }
+
+const noSignal=():Record<StemKind,number>=>({vocals:0,drums:0,bass:0,other:0});
 
 const initialSnapshot = (separation: SeparationRecord): SeparatedPlaybackSnapshot => ({
   ready: false,
@@ -42,6 +45,7 @@ const initialSnapshot = (separation: SeparationRecord): SeparatedPlaybackSnapsho
   underruns: 0,
   repetition: 1,
   metronomeClicks:0,
+  meters:noSignal(),
 });
 
 export class SeparatedAudioEngine {
@@ -61,6 +65,7 @@ export class SeparatedAudioEngine {
   #dsp: DspPlaybackSettings = { speed:1,pitchSemitones:0 };
   #stretchNode: StretchNode | null = null;
   #masterNode: GainNode | null = null;
+  #stemNodes:Partial<Record<StemKind,{gain:GainNode;panner:StereoPannerNode}>>={};
   #metronome:MetronomePlaybackSettings={enabled:false,countIn:0,beats:[]};
   #recording:null|{requestId:string;operationId:string;startedAt:string;worker:Worker;node:AudioWorkletNode;stream:MediaStream;deviceSettings:MediaTrackSettings} = null;
 
@@ -96,7 +101,8 @@ export class SeparatedAudioEngine {
       await stretch.start({active:true,semitones:this.#pitchCorrection()});
       if (this.#disposed) { stretch.disconnect();if(context.state!=="closed")await context.close(); return; }
       const master=context.createGain();master.gain.value=1;master.connect(context.destination);this.#masterNode=master;
-      stretch.connect(master);this.#stretchNode=stretch;
+      for(const kind of ["vocals","drums","bass","other"] as const){const gain=context.createGain(),panner=context.createStereoPanner();gain.connect(panner);panner.connect(stretch);this.#stemNodes[kind]={gain,panner}}
+      stretch.connect(master);this.#stretchNode=stretch;this.#applyMixer();
       await this.#loadAt(0);
     } catch (error) {
       this.#update({ error: error instanceof Error ? error.message : "Four-stem audio could not be initialized." });
@@ -121,26 +127,26 @@ export class SeparatedAudioEngine {
     this.#sourceFrame = sourceFrame;
     const node = new AudioWorkletNode(context, "atarang-processor", {
       numberOfInputs: 0,
-      numberOfOutputs: 2,
-      outputChannelCount: [2,2],
+      numberOfOutputs: 5,
+      outputChannelCount: [2,2,2,2,2],
       processorOptions: { rings: this.#rings, generation, sourceFrame, practice:this.#practiceDescriptor(context.sampleRate),dsp:{speed:this.#dsp.speed},metronome:this.#metronomeDescriptor(context.sampleRate) },
     });
     this.#node = node;
-    node.connect(this.#stretchNode??this.#masterNode??context.destination,0,0);node.connect(this.#masterNode??context.destination,1,0);
+    this.#rings.forEach((ring,index)=>node.connect(this.#stemNodes[ring.kind]!.gain,index,0));node.connect(this.#masterNode??context.destination,4,0);
     node.port.onmessage = ({ data }) => {
       if (data.generation !== this.#generation) return;
       if (data.type === "clock") {
         this.#sourceFrame = data.sourceFrame;
-        this.#update({ currentTimeUs: Math.min(this.#snapshot.durationUs, Math.round(data.sourceFrame / data.sampleRate * 1_000_000)), driftFrames: data.driftFrames, underruns: data.underruns, repetition:data.repetition,metronomeClicks:data.metronomeClicks });
+        this.#update({ currentTimeUs: Math.min(this.#snapshot.durationUs, Math.round(data.sourceFrame / data.sampleRate * 1_000_000)), driftFrames: data.driftFrames, underruns: data.underruns, repetition:data.repetition,metronomeClicks:data.metronomeClicks,meters:data.meters });
       }
       if (data.type === "ended") {
         this.#wantedPlaying = false;
-        this.#update({ playing: false, currentTimeUs: this.#snapshot.durationUs });
+        this.#update({ playing: false, currentTimeUs: this.#snapshot.durationUs,meters:noSignal() });
       }
-      if(data.type === "practiceComplete"){this.#wantedPlaying=false;this.#update({playing:false,currentTimeUs:Math.round(data.sourceFrame/context.sampleRate*1_000_000),repetition:data.repetition})}
+      if(data.type === "practiceComplete"){this.#wantedPlaying=false;this.#update({playing:false,currentTimeUs:Math.round(data.sourceFrame/context.sampleRate*1_000_000),repetition:data.repetition,meters:noSignal()})}
     };
     if (this.#mixer) node.port.postMessage({ type: "mixer", mixer: this.#mixer });
-    this.#update({ ready: false, playing: false, currentTimeUs: timeUs, error: "", driftFrames: 0, underruns: 0, repetition:1,metronomeClicks:0 });
+    this.#update({ ready: false, playing: false, currentTimeUs: timeUs, error: "", driftFrames: 0, underruns: 0, repetition:1,metronomeClicks:0,meters:noSignal() });
 
     const blobIds = this.#separation.manifest.stems.map(({ kind }) => this.#separation.bindings[kind]);
     const blobs = await Promise.all(blobIds.map((blobId) => getBlob(blobId)));
@@ -179,7 +185,7 @@ export class SeparatedAudioEngine {
       if (this.#snapshot.ready) { this.#node?.port.postMessage({ type: "play" }); this.#update({ playing: true }); }
     } else {
       this.#node.port.postMessage({ type: "pause" });
-      this.#update({ playing: false });
+      this.#update({ playing: false,meters:noSignal() });
     }
   }
 
@@ -191,8 +197,11 @@ export class SeparatedAudioEngine {
 
   setMixer(mixer: Record<StemKind, StemMixerState>) {
     this.#mixer = mixer;
+    this.#applyMixer();
     this.#node?.port.postMessage({ type: "mixer", mixer });
   }
+
+  #applyMixer(){if(!this.#mixer)return;const solo=Object.values(this.#mixer).some(stem=>stem.solo);for(const kind of ["vocals","drums","bass","other"] as const){const settings=this.#mixer[kind],nodes=this.#stemNodes[kind];if(!nodes)continue;nodes.gain.gain.value=settings.muted||(solo&&!settings.solo)?0:settings.gain;nodes.panner.pan.value=settings.pan}}
 
   setMasterGain(gain:number){if(this.#masterNode)this.#masterNode.gain.value=Math.max(0,Math.min(3.2,gain))}
 
@@ -220,6 +229,7 @@ export class SeparatedAudioEngine {
     this.#node?.disconnect();
     this.#stretchNode?.disconnect();
     this.#masterNode?.disconnect();
+    for(const nodes of Object.values(this.#stemNodes)){nodes?.gain.disconnect();nodes?.panner.disconnect()}
     if(this.#recording){this.#recording.stream.getTracks().forEach(track=>track.stop());this.#recording.node.disconnect();this.#recording.worker.terminate();this.#recording=null}
     void this.#context?.close();
     this.#listeners.clear();

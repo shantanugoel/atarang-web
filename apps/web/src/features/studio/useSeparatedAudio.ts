@@ -9,12 +9,13 @@ import {uuidV7} from "../../storage/ids";
 import { useStudioStore } from "./studioStore";
 import type { ImportedPlayback } from "./useImportedAudio";
 
-const empty: SeparatedPlaybackSnapshot = { ready: false, playing: false, currentTimeUs: 0, durationUs: 0, error: "", driftFrames: 0, underruns: 0, repetition:1,metronomeClicks:0 };
+const noSignal:Record<StemKind,number>={vocals:0,drums:0,bass:0,other:0};
+const empty: SeparatedPlaybackSnapshot = { ready: false, playing: false, currentTimeUs: 0, durationUs: 0, error: "", driftFrames: 0, underruns: 0, repetition:1,metronomeClicks:0,meters:noSignal };
 const mixerFromState = (state: ReturnType<typeof useStudioStore.getState>): Record<StemKind, StemMixerState> => ({
-  vocals: { gain: 10 ** (state.levels.vocals / 20), muted: state.muted.vocals, solo: state.soloed.vocals },
-  drums: { gain: 10 ** (state.levels.drums / 20), muted: state.muted.drums, solo: state.soloed.drums },
-  bass: { gain: 10 ** (state.levels.bass / 20), muted: state.muted.bass, solo: state.soloed.bass },
-  other: { gain: 10 ** (state.levels.other / 20), muted: state.muted.other, solo: state.soloed.other },
+  vocals: { gain: 10 ** (state.levels.vocals / 20), pan:state.pan.vocals, muted: state.muted.vocals, solo: state.soloed.vocals },
+  drums: { gain: 10 ** (state.levels.drums / 20), pan:state.pan.drums, muted: state.muted.drums, solo: state.soloed.drums },
+  bass: { gain: 10 ** (state.levels.bass / 20), pan:state.pan.bass, muted: state.muted.bass, solo: state.soloed.bass },
+  other: { gain: 10 ** (state.levels.other / 20), pan:state.pan.other, muted: state.muted.other, solo: state.soloed.other },
 });
 
 export function useSeparatedAudio(separation?: SeparationRecord, beatGrid?:BeatGridV1|null): ImportedPlayback {
@@ -37,7 +38,7 @@ export function useSeparatedAudio(separation?: SeparationRecord, beatGrid?:BeatG
     next.setDsp({speed:initial.speed,pitchSemitones:initial.pitch});
     next.setMetronome({enabled:initial.metronome&&Boolean(beatGridRef.current?.reliable),countIn:initial.countIn as 0|2|4,beats:beatGridRef.current?.beats??[]});
     const unsubscribeMixer = useStudioStore.subscribe((state, previous) => {
-      if (state.levels !== previous.levels || state.muted !== previous.muted || state.soloed !== previous.soloed) next.setMixer(mixerFromState(state));
+      if (state.levels !== previous.levels || state.pan !== previous.pan || state.muted !== previous.muted || state.soloed !== previous.soloed) next.setMixer(mixerFromState(state));
       if(state.masterLevel!==previous.masterLevel)next.setMasterGain(10 ** (state.masterLevel/20));
       if(state.loopEnabled!==previous.loopEnabled||state.loopStartUs!==previous.loopStartUs||state.loopEndUs!==previous.loopEndUs||state.repetitions!==previous.repetitions||state.pause!==previous.pause)next.setPractice({loopEnabled:state.loopEnabled,loopStartUs:state.loopStartUs,loopEndUs:state.loopEndUs,repetitions:state.repetitions,pauseSeconds:state.pause});
       if(state.speed!==previous.speed||state.pitch!==previous.pitch)next.setDsp({speed:state.speed,pitchSemitones:state.pitch});

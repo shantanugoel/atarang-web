@@ -92,6 +92,12 @@ describe("speed ramp",()=>{
 });
 
 describe("mix presets",()=>{
+  test("pan is bounded and every preset returns the mix to centre",()=>{
+    state().setPan("vocals",2);
+    expect(state().pan.vocals).toBe(1);
+    state().applyPreset("guide");
+    expect(Object.values(state().pan)).toEqual([0,0,0,0]);
+  });
   test("Learn lifts the selected stem and lowers the band, without muting it",()=>{
     state().setTarget("bass");
     state().applyPreset("learn");

@@ -22,10 +22,12 @@ class AtarangProcessor extends AudioWorkletProcessor {
   #metronome:MetronomeDescriptor={enabled:false,countIn:0,beats:[]};
   #beatIndex=0;#clickRemaining=0;#clickLength=1;#clickPhase=0;#clickFrequency=1000;
   #clickCount=0;
+  #meterFrames=0;
+  #meterSquares:Record<StemKind,number>={vocals:0,drums:0,bass:0,other:0};
   #countingIn=false;#countInRemaining=0;#countInFrames=0;
   #practice: PracticeDescriptor = { loopEnabled: false, loopStartFrame: 0, loopEndFrame: 0, repetitions: 1, pauseFrames: 0 };
-  #mixer: Record<StemKind,{gain:number;muted:boolean;solo:boolean}> = {
-    vocals:{gain:1,muted:false,solo:false},drums:{gain:1,muted:false,solo:false},bass:{gain:1,muted:false,solo:false},other:{gain:1,muted:false,solo:false},
+  #mixer: Record<StemKind,{gain:number;pan:number;muted:boolean;solo:boolean}> = {
+    vocals:{gain:1,pan:0,muted:false,solo:false},drums:{gain:1,pan:0,muted:false,solo:false},bass:{gain:1,pan:0,muted:false,solo:false},other:{gain:1,pan:0,muted:false,solo:false},
   };
 
   constructor(options?: { processorOptions?: { rings?:RingDescriptor[];generation?:number;sourceFrame?:number;practice?:PracticeDescriptor;dsp?:{speed:number};metronome?:MetronomeDescriptor } }) {
@@ -57,18 +59,21 @@ class AtarangProcessor extends AudioWorkletProcessor {
 
   #load(rings:RingDescriptor[],generation:number,sourceFrame:number,practice?:PracticeDescriptor,dsp?:{speed:number},metronome?:MetronomeDescriptor) {
     this.#rings=rings;this.#generation=generation;this.#sourceFrame=sourceFrame;this.#clockFrames=0;this.#ended=false;
+    this.#meterFrames=0;this.#meterSquares={vocals:0,drums:0,bass:0,other:0};
     this.#readPhase=0;this.#setDsp(dsp);this.#setMetronome(metronome);
     this.#setPractice(practice);
   }
 
-  #consumeOne(outputIndex:number,left:Float32Array,right:Float32Array,available:number) {
+  #consumeOne(outputIndex:number,outputs:Float32Array[][],available:number) {
     const soloActive=Object.values(this.#mixer).some(value=>value.solo);
-    for(const ring of this.#rings){
+    for(const [stemIndex,ring] of this.#rings.entries()){
       const header=new Int32Array(ring.sab,0,8),data=new Float32Array(ring.sab,32),settings=this.#mixer[ring.kind],audible=!settings.muted&&(!soloActive||settings.solo);
       const read=Atomics.load(header,0),next=available>1?(read+1)%ring.capacityFrames:read;
-      if(audible){const inverse=1-this.#readPhase;left[outputIndex]=left[outputIndex]!+(data[read*2]!*inverse+data[next*2]!*this.#readPhase)*settings.gain;right[outputIndex]=right[outputIndex]!+(data[read*2+1]!*inverse+data[next*2+1]!*this.#readPhase)*settings.gain}
+      const inverse=1-this.#readPhase,rawLeft=data[read*2]!*inverse+data[next*2]!*this.#readPhase,rawRight=data[read*2+1]!*inverse+data[next*2+1]!*this.#readPhase;
+      const left=outputs[stemIndex]?.[0],right=outputs[stemIndex]?.[1];if(left)left[outputIndex]=rawLeft;if(right)right[outputIndex]=rawRight;
+      if(audible)this.#meterSquares[ring.kind]+=(rawLeft*rawLeft+rawRight*rawRight)*.5*settings.gain*settings.gain;
     }
-    left[outputIndex]=Math.max(-1,Math.min(1,left[outputIndex]!));right[outputIndex]=Math.max(-1,Math.min(1,right[outputIndex]!));
+    this.#meterFrames++;
     this.#readPhase+=this.#speed;
     if(this.#readPhase>=1){this.#readPhase-=1;for(const ring of this.#rings){const header=new Int32Array(ring.sab,0,8),read=Atomics.load(header,0);Atomics.store(header,0,(read+1)%ring.capacityFrames);Atomics.sub(header,2,1);Atomics.add(header,7,1)}this.#sourceFrame+=1}
   }
@@ -90,11 +95,13 @@ class AtarangProcessor extends AudioWorkletProcessor {
   #postClock() {
     const reads=this.#rings.map(ring=>Atomics.load(new Int32Array(ring.sab,0,8),7));
     const underruns=this.#rings.reduce((sum,ring)=>sum+Atomics.load(new Int32Array(ring.sab,0,8),5),0);
-    this.port.postMessage({type:"clock",generation:this.#generation,sourceFrame:this.#sourceFrame,sampleRate,driftFrames:Math.max(...reads)-Math.min(...reads),underruns,repetition:this.#loopCount+1,metronomeClicks:this.#clickCount});
+    const meters=Object.fromEntries(Object.entries(this.#meterSquares).map(([kind,squares])=>[kind,this.#meterFrames?Math.min(1,Math.sqrt(squares/this.#meterFrames)):0]));
+    this.port.postMessage({type:"clock",generation:this.#generation,sourceFrame:this.#sourceFrame,sampleRate,driftFrames:Math.max(...reads)-Math.min(...reads),underruns,repetition:this.#loopCount+1,metronomeClicks:this.#clickCount,meters});
+    this.#meterFrames=0;this.#meterSquares={vocals:0,drums:0,bass:0,other:0};
   }
 
   process(_inputs:Float32Array[][],outputs:Float32Array[][]) {
-    const left=outputs[0]?.[0],right=outputs[0]?.[1],clickLeft=outputs[1]?.[0],clickRight=outputs[1]?.[1];if(!left||!right)return true;left.fill(0);right.fill(0);clickLeft?.fill(0);clickRight?.fill(0);
+    const left=outputs[0]?.[0],clickLeft=outputs[4]?.[0],clickRight=outputs[4]?.[1];if(!left)return true;for(const output of outputs)for(const channel of output)channel.fill(0);
     if(!this.#playing||this.#rings.length!==4)return true;
     let outputOffset=0;
     while(outputOffset<left.length&&this.#playing){
@@ -113,7 +120,7 @@ class AtarangProcessor extends AudioWorkletProcessor {
         break;
       }
       if(minimum<2&&!allEnded){for(const ring of this.#rings)Atomics.add(new Int32Array(ring.sab,0,8),5,1);break}
-      this.#renderClick(outputOffset,clickLeft,clickRight);this.#consumeOne(outputOffset,left,right,minimum);outputOffset+=1;this.#clockFrames+=1;
+      this.#renderClick(outputOffset,clickLeft,clickRight);this.#consumeOne(outputOffset,outputs,minimum);outputOffset+=1;this.#clockFrames+=1;
       if(this.#practice.loopEnabled&&this.#sourceFrame>=this.#practice.loopEndFrame)this.#atLoopBoundary();
     }
     if(this.#clockFrames>=sampleRate/10){this.#clockFrames%=Math.max(1,Math.round(sampleRate/10));this.#postClock()}

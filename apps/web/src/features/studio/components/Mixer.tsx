@@ -15,7 +15,7 @@ const presets: { key: MixPreset; label: string; describe: (stem: string) => stri
   { key: "playAlong", label: "Play along", describe: (stem) => `${stem} silenced so you play that part` },
 ];
 
-export function Mixer({ available = true }: { available?: boolean }) {
+export function Mixer({ available = true,meters={} }: { available?: boolean;meters?:Partial<Record<StemKind,number>> }) {
   const state = useStudioStore();
   const targetLabel = stemList.find((stem) => stem.key === state.target)?.label ?? "The selected stem";
   return (
@@ -34,8 +34,10 @@ export function Mixer({ available = true }: { available?: boolean }) {
           </div>
           <div className={styles.faderWrap}>
             <input disabled={!available} aria-label={`${label} level, ${state.levels[key]} decibels`} type="range" min="-60" max="10" step="0.5" value={state.levels[key]} onChange={(e) => state.setLevel(key, Number(e.target.value))} />
+            <span className={styles.meter} role="meter" aria-label={`${label} live level`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((meters[key]??0)*100)}><i style={{height:`${Math.round((meters[key]??0)*100)}%`}} /></span>
           </div>
           <output>{state.levels[key].toFixed(1)} dB</output>
+          <label className={styles.pan}><span>L</span><input disabled={!available} aria-label={`${label} pan`} type="range" min="-1" max="1" step="0.05" value={state.pan[key]} onChange={event=>state.setPan(key,Number(event.target.value))}/><span>R</span></label>
           <span className={styles.colorRule} />
           <button disabled={!available} className={styles.speaker} onClick={() => state.toggleMute(key)} aria-label={`${state.muted[key] ? "Unmute" : "Mute"} ${label}`}>
             {state.muted[key] ? <SpeakerSlash /> : <SpeakerHigh />}
@@ -49,6 +51,7 @@ export function Mixer({ available = true }: { available?: boolean }) {
           <input aria-label={`Master level, ${state.masterLevel} decibels`} type="range" min="-60" max="0" step="0.5" value={state.masterLevel} onChange={(event)=>state.setMasterLevel(Number(event.target.value))}/>
         </div>
         <output>{state.masterLevel.toFixed(1)} dB</output>
+        <span className={styles.panSpacer}>PAN</span>
         <span className={styles.colorRule} />
         <span className={styles.masterLabel}>OUTPUT</span>
       </section>
