@@ -181,7 +181,16 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
   await page.getByRole("link",{name:"Library"}).click();
   await expect(page.getByRole("link",{name:"Separate again"})).toBeVisible();
   await page.getByRole("link",{name:"Separate again"}).click();
-  await expect(page.getByRole("dialog",{name:"Separate this song again"})).toBeVisible();
+  const replaceDialog=page.getByRole("dialog",{name:"Separate this song again"});
+  await expect(replaceDialog).toBeVisible();
+  await replaceDialog.getByRole("button",{name:"Close separation options"}).click();
+  await page.getByRole("link",{name:"Library"}).click();
+  await page.getByRole("button",{name:/^Separated/}).click();
+  page.once("dialog",dialog=>dialog.accept());
+  await page.getByRole("button",{name:"Remove separation for Separated fixture"}).click();
+  await expect(page.getByText("No separated songs")).toBeVisible();
+  await page.getByRole("button",{name:/^Originals/}).click();
+  await expect(page.getByText("Separated fixture",{exact:true})).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -212,6 +221,45 @@ test("the Library category is in the URL, so Back returns to the list you were r
   await expect(page).toHaveURL(/\/studio/);
   await page.goBack();
   await expect(page).toHaveURL(/category=performances/);
+  await expect(page.getByText("No performances yet")).toBeVisible();
+});
+
+test("the Library previews sources and bulk removal preserves shared media",async({page})=>{
+  const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
+  await page.goto("/library");
+  await page.getByLabel("Choose audio to import").setInputFiles({name:"Library A.wav",mimeType:"audio/wav",buffer:silentWav()});
+  await expect(page).toHaveURL(/\/studio\//);
+  await page.getByRole("link",{name:"Library"}).click();
+  await page.getByLabel("Choose audio to import").setInputFiles({name:"Library B.wav",mimeType:"audio/wav",buffer:silentWav()});
+  await expect(page).toHaveURL(/\/studio\//);
+  await page.getByRole("link",{name:"Library"}).click();
+  await expect(page.getByRole("button",{name:/^Originals/})).toContainText(/KB/);
+  await page.getByRole("button",{name:"Preview Library B"}).click();
+  const preview=page.locator('audio[aria-label="Preview Library B"]');
+  await expect(preview).toBeVisible();
+  await page.getByLabel("Select Library A").check();
+  await expect(page.getByRole("button",{name:"Remove selected (1)"})).toBeVisible();
+  await page.getByLabel("Search library").fill("Library B");
+  await expect(page.getByRole("button",{name:"Remove selected (1)"})).toBeHidden();
+  await page.getByLabel("Search library").fill("");
+  await page.getByLabel("Select Library A").check();
+  page.once("dialog",dialog=>dialog.accept());
+  await page.getByRole("button",{name:"Remove selected (1)"}).click();
+  await expect(page.getByText("Library A",{exact:true})).toBeHidden();
+  await expect(page.getByText("Library B",{exact:true})).toBeVisible();
+  await expect(preview).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("a recorded take can be removed without a source song",async({page})=>{
+  const performanceId="019fef4f-9c77-7a3f-94ca-ef4214a806e1",originalId="019fef4f-9c77-7a3f-94ca-ef4214a806e2",sha="b".repeat(64),now="2026-08-11T00:00:00.000Z";
+  await page.goto("/");
+  await page.evaluate(async({performanceId,originalId,sha,now})=>new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("performances","readwrite"),asset={blobId:`sha256:${sha}`,sha256:sha,byteLength:100,mediaType:"audio/wav"},manifest={schema:"atarang.performance/1",performanceId,originalId,revision:0,startedAt:now,endedAt:"2026-08-11T00:00:01.000Z",sampleRate:44_100,channels:2,durationFrames:44_100,mic:asset,backing:asset,inputOffsetUs:0,edit:{trimStartUs:0,trimEndUs:1_000_000,fadeInUs:0,fadeOutUs:0},updatedAt:now};transaction.objectStore("performances").put({id:performanceId,originalId,revision:0,schemaVersion:1,createdAt:now,updatedAt:now,manifest});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}}),{performanceId,originalId,sha,now});
+  await page.goto("/library?category=performances");
+  await expect(page.getByText("Recorded take",{exact:true})).toBeVisible();
+  await page.getByLabel("Select take from recording").check();
+  page.once("dialog",dialog=>dialog.accept());
+  await page.getByRole("button",{name:"Remove selected (1)"}).click();
   await expect(page.getByText("No performances yet")).toBeVisible();
 });
 

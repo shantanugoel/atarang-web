@@ -75,9 +75,17 @@ export async function libraryUsage() {
   return blobs.reduce((total, blob) => total + blob.byteLength, 0);
 }
 
+export async function libraryCategoryUsage() {
+  const db=await database,[originals,separations,performances,blobs]=await Promise.all([db.getAll("originals"),db.getAll("separations"),db.getAll("performances"),db.getAll("blobs")]),sizes=new Map(blobs.map(blob=>[blob.id,blob.byteLength]));
+  const total=(ids:string[])=>[...new Set(ids)].reduce((sum,id)=>sum+(sizes.get(id)??0),0);
+  return {originals:total(originals.map(record=>record.blobId)),separated:total(separations.flatMap(record=>Object.values(record.bindings))),performances:total(performances.flatMap(record=>[record.manifest.mic.blobId,record.manifest.backing.blobId]))};
+}
+
+export async function listAnalyzedOriginalIds(){const db=await database,[waveforms,beats,chords]=await Promise.all([db.getAll("waveforms"),db.getAll("beats"),db.getAll("chordAnalyses")]);return new Set([...waveforms.map(record=>record.originalId),...beats.map(record=>record.originalId),...chords.map(record=>record.originalId)])}
+
 export async function removeOriginal(id: string) {
   const db = await database;
-  const transaction = db.transaction(["originals", "blobs", "waveforms", "separations", "practice", "lyrics", "charts", "beats"], "readwrite");
+  const transaction = db.transaction(["originals", "blobs", "waveforms", "separations", "practice", "lyrics", "charts", "beats", "chordAnalyses"], "readwrite");
   const original = await transaction.objectStore("originals").get(id);
   if (!original) { transaction.abort(); return false; }
   const separations = (await transaction.objectStore("separations").getAll()).filter((record) => record.originalId === id);
@@ -86,6 +94,7 @@ export async function removeOriginal(id: string) {
   await transaction.objectStore("practice").delete(id);
   await transaction.objectStore("lyrics").delete(id);
   await transaction.objectStore("beats").delete(id);
+  await transaction.objectStore("chordAnalyses").delete(id);
   const charts=(await transaction.objectStore("charts").getAll()).filter(record=>record.originalId===id);for(const chart of charts)await transaction.objectStore("charts").delete(chart.id);
   for (const separation of separations) await transaction.objectStore("separations").delete(separation.id);
   const references = [original.blobId, ...separations.flatMap((record) => Object.values(record.bindings))];
@@ -100,6 +109,20 @@ export async function removeOriginal(id: string) {
   for (const orphanPath of orphanPaths) { try { await removeOpfsPath(orphanPath); } catch { /* An unreferenced blob is safe and reclaimed by integrity cleanup. */ } }
   notify();
   return true;
+}
+
+export async function removeSeparation(originalId:string){
+  const db=await database,transaction=db.transaction(["originals","separations","blobs"],"readwrite"),original=await transaction.objectStore("originals").get(originalId),records=(await transaction.objectStore("separations").getAll()).filter(record=>record.originalId===originalId||record.manifest.original.originalId===originalId||Boolean(original&&record.manifest.original.contentSha256===original.contentSha256)),orphanPaths:string[]=[];
+  for(const record of records){await transaction.objectStore("separations").delete(record.id);for(const blobId of Object.values(record.bindings)){const blob=await transaction.objectStore("blobs").get(blobId);if(!blob)continue;if(blob.referenceCount>1)await transaction.objectStore("blobs").put({...blob,referenceCount:blob.referenceCount-1,updatedAt:new Date().toISOString()});else{await transaction.objectStore("blobs").delete(blobId);orphanPaths.push(blob.opfsPath)}}}
+  await transaction.done;for(const path of orphanPaths)try{await removeOpfsPath(path)}catch{/* Unreferenced media is reclaimed by the integrity sweep. */}notify();return records.length>0;
+}
+
+export async function removeAnalysis(originalId:string){const db=await database,transaction=db.transaction(["waveforms","beats","chordAnalyses"],"readwrite");await Promise.all([transaction.objectStore("waveforms").delete(originalId),transaction.objectStore("beats").delete(originalId),transaction.objectStore("chordAnalyses").delete(originalId)]);await transaction.done;notify()}
+
+export async function removePerformance(id:string){
+  const db=await database,transaction=db.transaction(["performances","blobs"],"readwrite"),record=await transaction.objectStore("performances").get(id);if(!record)return false;await transaction.objectStore("performances").delete(id);const orphanPaths:string[]=[];
+  for(const blobId of [record.manifest.mic.blobId,record.manifest.backing.blobId]){const blob=await transaction.objectStore("blobs").get(blobId);if(!blob)continue;if(blob.referenceCount>1)await transaction.objectStore("blobs").put({...blob,referenceCount:blob.referenceCount-1,updatedAt:new Date().toISOString()});else{await transaction.objectStore("blobs").delete(blobId);orphanPaths.push(blob.opfsPath)}}
+  await transaction.done;for(const path of orphanPaths)try{await removeOpfsPath(path)}catch{/* Unreferenced media is reclaimed by the integrity sweep. */}notify();return true;
 }
 
 export async function getSetting(id: string) { return (await database).get("settings", id); }
