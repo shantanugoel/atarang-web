@@ -47,7 +47,9 @@ export function StorageNotice() {
       {evicted && manifest && <button className={styles.primary} disabled={Boolean(progress)} onClick={() => void download()}>
         <DownloadSimple aria-hidden />{progress ? `Downloading… ${Math.round(progress.completedBytes / progress.totalBytes * 100)}%` : "Download model again"}
       </button>}
-      {!declined && <button onClick={() => void request()}>Keep my library</button>}
+      {/* Named for what it does. "Keep my library" reads like a setting the user
+          already has, next to a warning that the browser can take it away. */}
+      {!declined && <button onClick={() => void request()}>Request persistent storage</button>}
       <button className={styles.dismiss} aria-label="Dismiss storage notice" onClick={dismiss}><X aria-hidden /></button>
     </div>
   </div>;
