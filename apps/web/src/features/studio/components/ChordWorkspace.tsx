@@ -23,6 +23,8 @@ import{useUserChords}from"../../chords/useUserChords";
 import { usePlaybackSession } from "../PlaybackSession";
 import { useStudioStore } from "../studioStore";
 import { useChordAnalysis } from "../../chords/useChordAnalysis";
+import { useLyrics } from "../../lyrics/useLyrics";
+import { activeLyricLine } from "../../lyrics/lrc";
 import { uuidV7 } from "../../../storage/ids";
 import styles from "./ChordWorkspace.module.css";
 
@@ -172,9 +174,12 @@ export function ChordWorkspace({
     {waveformStatus,retryAnalysis}=usePlaybackSession(),
     {chords:userChords}=useUserChords(),
     analysis = useChordAnalysis(originalId),
+    {document:lyrics}=useLyrics(originalId),
     selectedId = useStudioStore((state) => state.chartId),
     setSelectedId = useStudioStore((state) => state.setChartId),
-    [view, setView] = useState<"timeline" | "chart">("timeline"),
+    view = useStudioStore((state) => state.chordView),
+    setView = useStudioStore((state) => state.setChordView),
+    setTab = useStudioStore((state) => state.setTab),
     [settings, setSettings] = useState({ transposeSemitones: 0, simplify: false, capo: 0 }),
     [panel, setPanel] = useState<"paste" | "edit" | null>(null),
     [draft, setDraft] = useState(""),
@@ -183,9 +188,10 @@ export function ChordWorkspace({
     trigger = useRef<HTMLButtonElement>(null);
   const chart =
     charts?.find((value) => value.chartId === selectedId) ?? charts?.[0];
-  const activeView = view === "timeline" && !analysis?.segments.length && chart ? "chart" : view;
+  const activeView = view === "timeline" && !analysis?.segments.length && chart ? "chart"
+    : view === "chart" && !chart && analysis?.segments.length ? "timeline"
+    : view;
   useEffect(() => {
-    setView("timeline");
     setSettings({ transposeSemitones: 0, simplify: false, capo: 0 });
     setPanel(null);
     setDraft("");
@@ -211,6 +217,7 @@ export function ChordWorkspace({
       })),
     [chart, settings.simplify, settings.transposeSemitones],
   );
+  const activeLyrics = lyrics ? activeLyricLine(lyrics,currentTimeUs) : -1;
   const unique = useMemo(
     () =>
       Array.from(
@@ -387,9 +394,10 @@ export function ChordWorkspace({
       <div className={styles.toolbar}>
         <label>
           View
-          <select disabled={panel === "edit"} value={activeView} onChange={(event) => setView(event.target.value as "timeline" | "chart")}>
+          <select disabled={panel === "edit"} value={activeView} onChange={(event) => setView(event.target.value as typeof view)}>
             <option value="timeline" disabled={!analysis?.segments.length}>Timeline</option>
             <option value="chart" disabled={!chart}>Chart</option>
+            <option value="lyricsChords">Lyrics + Chords</option>
           </select>
         </label>
         <span>Transpose</span>
@@ -414,6 +422,30 @@ export function ChordWorkspace({
             {importButton}
             {pasteTrigger}
           </div>
+        </div>
+      ) : activeView === "lyricsChords" ? (
+        <div className={styles.leadSheet}>
+          {chart ? <>
+              <p>Selected chart · {chart.title}</p>
+              {rendered?.map(line => <section key={line.id}>
+                {line.section && <h3>{line.section}</h3>}
+                <p>{line.segments.map((segment,index) => <span className={styles.leadSegment} key={index}>{segment.chord && <b>{segment.chord}</b>}<i>{segment.text || " "}</i></span>)}</p>
+              </section>)}
+            </>
+            : lyrics === undefined ? <p role="status">Opening lyrics…</p>
+            : !lyrics ? <div className={styles.noLyrics}><strong>No lyrics yet</strong><p>Add lyrics first, then return here to practise with both sources together.</p><button onClick={() => setTab("lyrics")}>Add lyrics</button></div>
+            : <>
+              <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} compact transposeSemitones={settings.transposeSemitones} simplify={settings.simplify} />
+              {lyrics.lines.map((line,index) => {
+                const time = line.startTimeUs === undefined ? undefined : line.startTimeUs + lyrics.offsetUs,
+                  segment = time === undefined ? undefined : analysis?.segments.find(item => item.startTimeUs <= time && time < item.endTimeUs),
+                  chord = segment ? transposeChord(segment.chord, settings.transposeSemitones, settings.simplify) : undefined;
+                return <button className={activeLyrics === index ? styles.activeLine : ""} key={line.id} onClick={() => time !== undefined && seekTo?.(time / 1_000_000)}>
+                  {chord && <b>{chord}</b>}
+                  <span>{line.text}</span>
+                </button>;
+              })}
+            </>}
         </div>
       ) : chart ? (
       <div className={styles.chart}>

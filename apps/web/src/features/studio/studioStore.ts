@@ -5,6 +5,7 @@ import { stepZoom } from "./waveformView";
 
 export type StemKind = "vocals" | "drums" | "bass" | "other";
 export type StudioTab = "lyrics" | "chords" | "sheet" | "takes";
+export type ChordView = "timeline" | "chart" | "lyricsChords";
 export type StudioPane = "mix" | "song" | "practice";
 export type MixPreset = "balanced" | "learn" | "guide" | "playAlong";
 
@@ -30,6 +31,7 @@ export interface StudioState {
   pane: StudioPane;
   /** Selected user chord chart, which outlives the Chords tab that selects it. */
   chartId: string | null;
+  chordView: ChordView;
   target: StemKind;
   muted: Record<StemKind, boolean>;
   soloed: Record<StemKind, boolean>;
@@ -58,6 +60,7 @@ export interface StudioState {
   setTab(tab: StudioTab): void;
   setPane(pane: StudioPane): void;
   setChartId(chartId: string | null): void;
+  setChordView(view: ChordView): void;
   openSong(songId: string | null): void;
   setTarget(target: StemKind): void;
   toggleMute(stem: StemKind): void;
@@ -107,6 +110,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   tab: "lyrics",
   pane: "song",
   chartId: null,
+  chordView: "timeline",
   target: "vocals",
   muted: { ...stems },
   soloed: { ...stems },
@@ -131,6 +135,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   setTab: (tab) => set({ tab }),
   setPane: (pane) => set({ pane }),
   setChartId: (chartId) => set({ chartId }),
+  setChordView: (chordView) => set({ chordView }),
   // A different song, not a remount: the zoom and the chart belong to the song
   // that was open, and the pane and tab are how this user reads any song.
   openSong: (songId) => set((s) => (s.songId === songId ? {} : { songId, zoom: 1, chartId: null })),

@@ -13,6 +13,7 @@ describe("view state across a remount",()=>{
     state().setTab("chords");
     state().setPane("mix");
     state().setChartId("chart-1");
+    state().setChordView("lyricsChords");
     state().setLyricsFollowing(false);
     state().openSong("song-a");
     state().resetPractice(240_000_000);
@@ -20,6 +21,7 @@ describe("view state across a remount",()=>{
     expect(state().tab).toBe("chords");
     expect(state().pane).toBe("mix");
     expect(state().chartId).toBe("chart-1");
+    expect(state().chordView).toBe("lyricsChords");
     expect(state().lyricsFollowing).toBe(false);
   });
 
@@ -28,11 +30,13 @@ describe("view state across a remount",()=>{
     state().zoomBy(2);
     state().setChartId("chart-1");
     state().setTab("chords");
+    state().setChordView("chart");
     state().openSong("song-b");
     expect(state().zoom).toBe(1);
     expect(state().chartId).toBeNull();
     // How this user reads a song, not a property of the song.
     expect(state().tab).toBe("chords");
+    expect(state().chordView).toBe("chart");
   });
 });
 
