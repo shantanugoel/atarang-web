@@ -1,4 +1,9 @@
-.mixer { min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-right: 1px solid var(--line-strong); background: var(--surface-1); }
+.mixer { min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--line-strong); background: var(--surface-1); }
+/* Spans every channel: a preset is a statement about the whole mix. */
+.presets { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 8px; border-bottom: 1px solid var(--line-strong); }
+.presets button { min-height: 26px; padding: 0 4px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--text-soft); font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.presets button:hover:not(:disabled) { border-color: var(--accent); color: white; }
+.presets button:disabled { opacity: .45; cursor: not-allowed; }
 .unavailable .channel{opacity:.42}.unavailable button,.unavailable input{cursor:not-allowed}
 .channel { --stem: var(--text); min-width: 0; display: grid; grid-template-rows: 38px 56px minmax(120px, 1fr) 26px 3px 40px; align-items: center; justify-items: center; padding: 8px 5px 0; border-right: 1px solid var(--line-strong); }
 .channel:last-child { border-right: 0; }

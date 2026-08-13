@@ -4,6 +4,7 @@ import { stepZoom } from "./waveformView";
 
 export type StemKind = "vocals" | "drums" | "bass" | "other";
 export type StudioTab = "lyrics" | "chords" | "sheet" | "takes";
+export type MixPreset = "balanced" | "learn" | "guide" | "playAlong";
 
 export interface StudioState {
   playing: boolean;
@@ -39,6 +40,7 @@ export interface StudioState {
   toggleLoop(): void;
   clearLoop(durationUs: number): void;
   zoomBy(steps: number): void;
+  applyPreset(preset: MixPreset): void;
   resetPractice(durationUs: number): void;
   hydratePractice(document: PracticeStateV1, durationUs: number): void;
   adjust(key: "speed" | "pitch" | "repetitions" | "pause" | "countIn", delta: number): void;
@@ -47,6 +49,17 @@ export interface StudioState {
 const stems: Record<StemKind, boolean> = { vocals: false, drums: false, bass: false, other: false };
 const defaultLevels: Record<StemKind, number> = { vocals: 0, drums: 0, bass: -2.5, other: -4 };
 const MIN_LOOP_US = 500_000;
+// Loud enough to pick out a line, quiet enough that the rest is still a band —
+// muting everything else leaves nothing to play along to.
+const LEARN_FOREGROUND_DB = 3, LEARN_BACKGROUND_DB = -9;
+// A cue, not a performance: enough to hear where the melody goes without
+// singing over the top of it.
+const GUIDE_VOCAL_DB = -14;
+// The bottom of the fader rather than the mute flag. Mutes are not in the
+// practice contract and hydratePractice clears them, so a preset built on one
+// would be the only one of the four that did not survive a reload — and it is
+// the one a player leaves set for a whole session.
+const SILENT_DB = -60;
 
 export const useStudioStore = create<StudioState>((set) => ({
   playing: false,
@@ -81,6 +94,18 @@ export const useStudioStore = create<StudioState>((set) => ({
   toggleLoop: () => set((state) => ({ loopEnabled: !state.loopEnabled })),
   clearLoop: (durationUs) => set({ loopEnabled: false, loopStartUs: 0, loopEndUs: Math.max(MIN_LOOP_US, durationUs) }),
   zoomBy: (steps) => set((state) => ({ zoom: stepZoom(state.zoom, steps) })),
+  // Each preset is the defaults plus one change, which is what makes them safe
+  // to tap: any of them is a whole mix, not a modifier on the last one, and
+  // Balanced is always the way back.
+  applyPreset: (preset) => set((state) => {
+    const levels = { ...defaultLevels };
+    // Learn and Play along act on the stem the player selected, so the one
+    // control the mixer already has decides what "your part" means.
+    if (preset === "learn") for (const stem of Object.keys(levels) as StemKind[]) levels[stem] = stem === state.target ? LEARN_FOREGROUND_DB : defaultLevels[stem] + LEARN_BACKGROUND_DB;
+    if (preset === "guide") levels.vocals = GUIDE_VOCAL_DB;
+    if (preset === "playAlong") levels[state.target] = SILENT_DB;
+    return { levels, muted: { ...stems }, soloed: { ...stems } };
+  }),
   resetPractice: (durationUs) => set({ zoom:1,target:"vocals",muted:{...stems},soloed:{...stems},levels:{...defaultLevels},speed:1,pitch:0,repetitions:4,pause:2,countIn:2,metronome:true,loopEnabled:false,loopStartUs:0,loopEndUs:Math.max(MIN_LOOP_US,durationUs) }),
   hydratePractice: (document, durationUs) => set({ zoom:1,target:document.target,muted:{...stems},soloed:{...stems},levels:{...document.stemGainDb},speed:document.speed,pitch:document.pitchSemitones,repetitions:document.repetitions,pause:document.pauseSeconds,countIn:document.countIn,metronome:document.metronome,loopEnabled:document.loop.enabled,loopStartUs:Math.min(document.loop.startTimeUs,Math.max(0,durationUs-MIN_LOOP_US)),loopEndUs:Math.min(durationUs,Math.max(document.loop.endTimeUs,MIN_LOOP_US)) }),
   adjust: (key, delta) => set((s) => {
