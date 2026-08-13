@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   ArrowClockwise,
   DownloadSimple,
+  PencilSimple,
   Plus,
   SpinnerGap,
   Trash,
@@ -65,11 +66,15 @@ export function AnalysisChordRail({
   currentTimeUs = 0,
   seekTo,
   compact = false,
+  transposeSemitones = 0,
+  simplify = false,
 }: {
   originalId?: string | undefined;
   currentTimeUs?: number;
   seekTo?: ((seconds: number) => void) | undefined;
   compact?: boolean;
+  transposeSemitones?: number;
+  simplify?: boolean;
 }) {
   const analysis = useChordAnalysis(originalId);
   if (!analysis?.segments.length) return null;
@@ -81,7 +86,8 @@ export function AnalysisChordRail({
         currentTimeUs < segment.endTimeUs,
     ),
   );
-  const current = analysis.segments[active] ?? analysis.segments[0]!,
+  const shown = (chord: string) => transposeChord(chord, transposeSemitones, simplify),
+    current = analysis.segments[active] ?? analysis.segments[0]!,
     next = analysis.segments
       .slice(active + 1)
       .find((segment) => segment.chord !== current.chord);
@@ -93,13 +99,13 @@ export function AnalysisChordRail({
       <header>
         <div>
           <small>NOW</small>
-          <strong>{current.chord}</strong>
+          <strong>{shown(current.chord)}</strong>
           <span>{Math.round(current.confidence * 100)}% confidence</span>
         </div>
         {next && (
           <div>
             <small>NEXT</small>
-            <b>{next.chord}</b>
+            <b>{shown(next.chord)}</b>
             <span>
               in{" "}
               {Math.max(
@@ -137,7 +143,7 @@ export function AnalysisChordRail({
             onClick={() => seekTo?.(segment.startTimeUs / 1_000_000)}
             title={`${segment.chord} · ${Math.round(segment.confidence * 100)}%`}
           >
-            <b>{segment.chord}</b>
+            <b>{shown(segment.chord)}</b>
             <small>
               {Math.floor(segment.startTimeUs / 60_000_000)}:
               {String(
@@ -168,13 +174,26 @@ export function ChordWorkspace({
     analysis = useChordAnalysis(originalId),
     selectedId = useStudioStore((state) => state.chartId),
     setSelectedId = useStudioStore((state) => state.setChartId),
-    [pasting, setPasting] = useState(false),
-    [paste, setPaste] = useState(""),
+    [view, setView] = useState<"timeline" | "chart">("timeline"),
+    [settings, setSettings] = useState({ transposeSemitones: 0, simplify: false, capo: 0 }),
+    [panel, setPanel] = useState<"paste" | "edit" | null>(null),
+    [draft, setDraft] = useState(""),
     [issues, setIssues] = useState<string[]>([]),
     input = useRef<HTMLInputElement>(null),
     trigger = useRef<HTMLButtonElement>(null);
   const chart =
     charts?.find((value) => value.chartId === selectedId) ?? charts?.[0];
+  const activeView = view === "timeline" && !analysis?.segments.length && chart ? "chart" : view;
+  useEffect(() => {
+    setView("timeline");
+    setSettings({ transposeSemitones: 0, simplify: false, capo: 0 });
+    setPanel(null);
+    setDraft("");
+    setIssues([]);
+  }, [originalId]);
+  useEffect(() => {
+    if (chart) setSettings({ transposeSemitones: chart.transposeSemitones, simplify: chart.simplify, capo: chart.capo });
+  }, [chart?.chartId]);
   const rendered = useMemo(
     () =>
       chart?.lines.map((line) => ({
@@ -184,13 +203,13 @@ export function ChordWorkspace({
           chord: segment.chord
             ? transposeChord(
                 segment.chord,
-                chart.transposeSemitones,
-                chart.simplify,
+                settings.transposeSemitones,
+                settings.simplify,
               )
             : undefined,
         })),
       })),
-    [chart],
+    [chart, settings.simplify, settings.transposeSemitones],
   );
   const unique = useMemo(
     () =>
@@ -205,17 +224,30 @@ export function ChordWorkspace({
       ).slice(0, 4),
     [rendered],
   );
+  const detectedText = () => `{title: ${songTitle ?? "Detected chords"}}\n${analysis?.segments
+    .map((segment) => `[${segment.chord}]${Math.floor(segment.startTimeUs / 60_000_000).toString().padStart(2, "0")}:${Math.floor((segment.startTimeUs / 1_000_000) % 60).toString().padStart(2, "0")}`)
+    .join("\n") ?? ""}`;
   const addText = (text: string) => {
     if (!originalId) return;
-    // Nothing is saved until the text is worth saving. Adding the chart first
-    // and complaining afterwards is how `{title:` became a lyric line — and,
-    // because a chart replaces the detected timeline, an unfixable one.
     const found = chordProIssues(text);
-    if (found.length) { setIssues(found); setPaste(text); setPasting(true); return; }
+    if (found.length) { setIssues(found); setDraft(text); setPanel("paste"); return; }
     const value = save(parseChordPro(text, originalId, uuidV7(), songTitle));
     setSelectedId(value.chartId);
-    setPasting(false);
-    setPaste("");
+    setView("chart");
+    setPanel(null);
+    setDraft("");
+    setIssues([]);
+  };
+  const saveEdit = () => {
+    if (!originalId) return;
+    const found = chordProIssues(draft);
+    if (found.length) { setIssues(found); return; }
+    const current = activeView === "chart" ? chart : undefined,
+      parsed = parseChordPro(draft, originalId, current?.chartId ?? uuidV7(), songTitle),
+      value = save({ ...parsed, revision: current?.revision ?? parsed.revision, ...settings });
+    setSelectedId(value.chartId);
+    setView("chart");
+    setPanel(null);
     setIssues([]);
   };
   const importFile = async (file?: File) => {
@@ -224,40 +256,42 @@ export function ChordWorkspace({
     if (file) addText(await file.text());
     if (input.current) input.current.value = "";
   };
-  // Closing keeps the text. Someone who pasted a long chart and wants the panel
-  // out of the way has not asked to lose it, and reopening puts it back.
-  // Focus goes back to whichever control opened the panel — every view has one,
-  // and without this the removed button leaves focus on the body.
-  const closePaste = () => { setPasting(false); setIssues([]); trigger.current?.focus(); };
+  const closePanel = () => { setPanel(null); setIssues([]); globalThis.setTimeout(() => trigger.current?.focus()); };
   const chooseFile = (event: MouseEvent<HTMLButtonElement>) => { trigger.current = event.currentTarget; input.current?.click(); };
   const importButton = (
-    <button onClick={chooseFile}>
+    <button disabled={panel === "edit"} onClick={chooseFile}>
       <UploadSimple />
       Import ChordPro
     </button>
   );
   const pasteTrigger = (
     <button
-      aria-expanded={pasting}
-      onClick={(event) => { trigger.current = event.currentTarget; if (pasting) closePaste(); else setPasting(true); }}
+      disabled={panel === "edit"}
+      aria-expanded={panel === "paste"}
+      onClick={(event) => { trigger.current = event.currentTarget; if (panel === "paste") closePanel(); else { setPanel("paste"); setIssues([]); } }}
     >
       <Plus />
       Paste chart
     </button>
   );
-  const pastePanel = pasting && (
+  const edit = (event: MouseEvent<HTMLButtonElement>) => {
+    trigger.current = event.currentTarget;
+    setDraft(activeView === "chart" && chart ? exportChordPro(chart) : detectedText());
+    setIssues([]);
+    setPanel("edit");
+  };
+  const editor = panel && (
     <section
       className={styles.paste}
-      // Escape belongs to the innermost thing that can close, so it stops here
-      // rather than travelling on to whatever else may be listening.
-      onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); closePaste(); } }}
+      aria-label={panel === "edit" ? "Edit chord chart" : "Paste chord chart"}
+      onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); closePanel(); } }}
     >
       <textarea
         autoFocus
-        value={paste}
-        onChange={(event) => { setPaste(event.target.value); setIssues([]); }}
+        value={draft}
+        onChange={(event) => { setDraft(event.target.value); setIssues([]); }}
         placeholder={"{title: Song}\n[Am]Lyrics with [F]chords"}
-        aria-label="Paste ChordPro chart"
+        aria-label={panel === "edit" ? "Edit ChordPro chart" : "Paste ChordPro chart"}
         aria-invalid={issues.length > 0}
       />
       {issues.length > 0 && (
@@ -266,15 +300,18 @@ export function ChordWorkspace({
         </ul>
       )}
       <div className={styles.pasteActions}>
-        <button disabled={!paste.trim()} onClick={() => addText(paste)}>
-          Add chart
+        <button disabled={!draft.trim()} onClick={panel === "edit" ? saveEdit : () => addText(draft)}>
+          {panel === "edit" ? "Save changes" : "Add chart"}
         </button>
-        <button onClick={closePaste}>Cancel</button>
+        <button onClick={closePanel}>Cancel</button>
       </div>
     </section>
   );
-  const update = (change: Partial<UserChartV1>) =>
-    chart && save({ ...chart, ...change });
+  const changeSettings = (change: Partial<typeof settings>) => setSettings((value) => {
+    const next = { ...value, ...change };
+    if (chart) save({ ...chart, ...next });
+    return next;
+  });
   const download = () => {
     if (!chart) return;
     const url = URL.createObjectURL(
@@ -307,57 +344,7 @@ export function ChordWorkspace({
         Opening chord charts…
       </div>
     );
-  if (!chart && analysis?.segments.length)
-    return (
-      <div className={styles.detected} role="tabpanel">
-        <AnalysisChordRail
-          originalId={originalId}
-          currentTimeUs={currentTimeUs}
-          seekTo={seekTo}
-        />
-        <div className={styles.detectedActions}>
-          <p>
-            Detected chords stay aligned to source time. Click any segment to
-            seek; low-confidence answers are shown, not hidden.
-          </p>
-          <button
-            onClick={() =>
-              addText(
-                `{title: ${songTitle ?? "Detected chords"}}\n${analysis.segments
-                  .map(
-                    (segment) =>
-                      `[${segment.chord}]${Math.floor(
-                        segment.startTimeUs / 60_000_000,
-                      )
-                        .toString()
-                        .padStart(2, "0")}:${Math.floor(
-                        (segment.startTimeUs / 1_000_000) % 60,
-                      )
-                        .toString()
-                        .padStart(2, "0")}`,
-                  )
-                  .join("\n")}`,
-              )
-            }
-          >
-            <Plus />
-            Create editable chart
-          </button>
-          {importButton}
-          {pasteTrigger}
-        </div>
-        {pastePanel}
-        <input
-          ref={input}
-          className="sr-only"
-          type="file"
-          accept=".cho,.chordpro,.pro,text/plain"
-          aria-label="Choose ChordPro chart"
-          onChange={(event) => void importFile(event.target.files?.[0])}
-        />
-      </div>
-    );
-  if (!chart) {
+  if (!chart && !analysis?.segments.length) {
     // The detection pass writes the chords, so its state is the honest answer
     // to "why is this tab empty". Claiming "no chords yet" while the worker is
     // still reading them is the one moment a user is most likely to be looking.
@@ -383,7 +370,7 @@ export function ChordWorkspace({
           {importButton}
           {pasteTrigger}
         </div>
-        {pastePanel}
+        {editor}
         <input
           ref={input}
           className="sr-only"
@@ -396,14 +383,44 @@ export function ChordWorkspace({
     );
   }
   return (
-    <div className={styles.chart} role="tabpanel">
-      {/* This view has an Import button too, so it needs the repair editor a
-          rejected file opens — otherwise importing a bad chart here does
-          nothing at all, visibly. */}
-      {pastePanel}
+    <div className={styles.chordWorkspace} role="tabpanel">
       <div className={styles.toolbar}>
+        <label>
+          View
+          <select disabled={panel === "edit"} value={activeView} onChange={(event) => setView(event.target.value as "timeline" | "chart")}>
+            <option value="timeline" disabled={!analysis?.segments.length}>Timeline</option>
+            <option value="chart" disabled={!chart}>Chart</option>
+          </select>
+        </label>
+        <span>Transpose</span>
+        <button aria-label="Transpose down" onClick={() => changeSettings({ transposeSemitones: Math.max(-12, settings.transposeSemitones - 1) })}>−</button>
+        <output>{settings.transposeSemitones > 0 ? `+${settings.transposeSemitones}` : settings.transposeSemitones}</output>
+        <button aria-label="Transpose up" onClick={() => changeSettings({ transposeSemitones: Math.min(12, settings.transposeSemitones + 1) })}>+</button>
+        <button aria-pressed={settings.simplify} onClick={() => changeSettings({ simplify: !settings.simplify })}>Simplify</button>
+        <label>
+          Capo
+          <button aria-label="Decrease capo" onClick={() => changeSettings({ capo: Math.max(0, settings.capo - 1) })}>−</button>
+          <output>{settings.capo}</output>
+          <button aria-label="Increase capo" onClick={() => changeSettings({ capo: Math.min(12, settings.capo + 1) })}>+</button>
+        </label>
+        <button disabled={panel === "edit"} onClick={edit}><PencilSimple /> Edit</button>
+      </div>
+      {editor}
+      {activeView === "timeline" && analysis?.segments.length ? (
+        <div className={styles.detected}>
+          <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} transposeSemitones={settings.transposeSemitones} simplify={settings.simplify} />
+          <div className={styles.detectedActions}>
+            <p>Detected chords stay aligned to source time. Click any segment to seek; editing saves a separate chart.</p>
+            {importButton}
+            {pasteTrigger}
+          </div>
+        </div>
+      ) : chart ? (
+      <div className={styles.chart}>
+      <div className={styles.chartActions}>
         <select
           aria-label="Selected chord chart"
+          disabled={panel === "edit"}
           value={chart.chartId}
           onChange={(event) => setSelectedId(event.target.value)}
         >
@@ -413,83 +430,28 @@ export function ChordWorkspace({
             </option>
           ))}
         </select>
-        <button onClick={chooseFile}>
+        <button disabled={panel === "edit"} onClick={chooseFile}>
           <UploadSimple />
           Import
         </button>
-        <button onClick={download}>
+        <button disabled={panel === "edit"} onClick={download}>
           <DownloadSimple />
           Export
-        </button>
-        <span>Transpose</span>
-        <button
-          aria-label="Transpose down"
-          onClick={() =>
-            update({
-              transposeSemitones: Math.max(-12, chart.transposeSemitones - 1),
-            })
-          }
-        >
-          −
-        </button>
-        <output>
-          {chart.transposeSemitones > 0
-            ? `+${chart.transposeSemitones}`
-            : chart.transposeSemitones}
-        </output>
-        <button
-          aria-label="Transpose up"
-          onClick={() =>
-            update({
-              transposeSemitones: Math.min(12, chart.transposeSemitones + 1),
-            })
-          }
-        >
-          +
-        </button>
-        <button
-          aria-pressed={chart.simplify}
-          onClick={() => update({ simplify: !chart.simplify })}
-        >
-          Simplify
         </button>
         <button
           className={styles.delete}
           aria-label="Remove selected chart"
-          onClick={() => void remove(chart.chartId)}
+          disabled={panel === "edit"}
+          onClick={() => { void remove(chart.chartId); setView("timeline"); }}
         >
           <Trash />
         </button>
-        <input
-          ref={input}
-          className="sr-only"
-          type="file"
-          accept=".cho,.chordpro,.pro,text/plain"
-          aria-label="Choose ChordPro chart"
-          onChange={(event) => void importFile(event.target.files?.[0])}
-        />
       </div>
       <header>
         <div>
           <h2>{chart.title}</h2>
           <p>{chart.artist || "User chart"}</p>
         </div>
-        <label>
-          Capo{" "}
-          <button
-            aria-label="Decrease capo"
-            onClick={() => update({ capo: Math.max(0, chart.capo - 1) })}
-          >
-            −
-          </button>
-          <output>{chart.capo}</output>
-          <button
-            aria-label="Increase capo"
-            onClick={() => update({ capo: Math.min(12, chart.capo + 1) })}
-          >
-            +
-          </button>
-        </label>
       </header>
       {unique.length > 0 && (
         <div className={styles.diagrams}>
@@ -513,6 +475,16 @@ export function ChordWorkspace({
           </section>
         ))}
       </div>
+      </div>
+      ) : null}
+      <input
+        ref={input}
+        className="sr-only"
+        type="file"
+        accept=".cho,.chordpro,.pro,text/plain"
+        aria-label="Choose ChordPro chart"
+        onChange={(event) => void importFile(event.target.files?.[0])}
+      />
     </div>
   );
 }
