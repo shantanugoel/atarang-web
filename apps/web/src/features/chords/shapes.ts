@@ -1,4 +1,5 @@
 import { parseChord } from "./chords";
+import type{UserChordV1}from"@atarang/contracts";
 
 // Guitar shapes, ported from the iOS ChordShapes catalogue.
 //
@@ -13,6 +14,7 @@ export interface ChordShape {
   barreFret?: number;
   /** Where the root sits, for the caption. */
   rootString?: string;
+  userDefined?:boolean;
 }
 
 const NATURAL: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -33,6 +35,9 @@ const QUALITY_ALIASES = new Map<string, string>([
 
 /** Normalises a written quality to the catalogue's key, or null if unsupported. */
 const qualityKey = (quality: string) => QUALITY_ALIASES.get(quality.trim().replaceAll("♯", "#").replaceAll("♭", "b")) ?? null;
+
+/** One grip identity: enharmonic spellings and slash basses share a voicing. */
+export function chordShapeKey(symbol:string){const parsed=parseChord(symbol);if(!parsed)return null;const letter=NATURAL[parsed.root[0]??""];if(letter===undefined)return null;const accidental=parsed.root[1]==="#"?1:parsed.root[1]==="b"?-1:0,quality=qualityKey(parsed.quality)??parsed.quality.trim().replaceAll("♯","#").replaceAll("♭","b").toLowerCase();return`${(letter+accidental+12)%12}:${quality}`}
 
 const key = (root: number, quality: string) => `${root}:${quality}`;
 
@@ -138,4 +143,4 @@ export function chordShapes(symbol: string): ChordShape[] {
 }
 
 /** The shape to show, or undefined when the catalogue has nothing honest. */
-export const bestChordShape = (symbol: string) => chordShapes(symbol)[0];
+export function bestChordShape(symbol:string,userChords:readonly UserChordV1[]=[]){const identity=chordShapeKey(symbol),saved=identity?userChords.find(chord=>chordShapeKey(chord.symbol)===identity):undefined;return saved?{frets:[...saved.frets],...(saved.barreFret===undefined?{}:{barreFret:saved.barreFret}),userDefined:true}:chordShapes(symbol)[0]}

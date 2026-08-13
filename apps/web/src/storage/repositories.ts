@@ -5,6 +5,7 @@ const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastCh
 const listeners = new Set<() => void>();
 channel?.addEventListener("message", () => listeners.forEach((listener) => listener()));
 const notify = () => { listeners.forEach((listener) => listener()); channel?.postMessage("changed"); };
+export const notifyLibraryChanged=notify;
 
 export function subscribeLibrary(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; }
 export async function listOriginals() { return (await database).getAll("originals").then((records) => records.sort((a,b) => b.createdAt.localeCompare(a.createdAt))); }
@@ -144,6 +145,9 @@ export async function putLyrics(record:AtarangDatabase["lyrics"]["value"]){await
 export async function listCharts(originalId:string){return(await database).getAll("charts").then(records=>records.filter(record=>record.originalId===originalId).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)))}
 export async function putChart(record:AtarangDatabase["charts"]["value"]){await(await database).put("charts",record);notify()}
 export async function removeChart(chartId:string){await(await database).delete("charts",chartId);notify()}
+export async function listUserChords(){return(await database).getAll("userChords").then(records=>records.sort((a,b)=>a.document.symbol.localeCompare(b.document.symbol)))}
+export async function putUserChord(record:AtarangDatabase["userChords"]["value"]){await(await database).put("userChords",record);notify()}
+export async function removeUserChord(chordId:string){await(await database).delete("userChords",chordId);notify()}
 export async function getBeatGrid(originalId:string){return(await database).get("beats",originalId)}
 export async function putBeatGrid(record:AtarangDatabase["beats"]["value"]){await(await database).put("beats",record);notify()}
 export async function getChordAnalysis(originalId:string){return(await database).get("chordAnalyses",originalId)}

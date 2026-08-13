@@ -45,7 +45,7 @@ test.describe("local separation",()=>{
     if(await failure.isVisible())throw new Error(`local separation failed: ${await failure.innerText()}`);
 
     const stems=await page.evaluate(async()=>new Promise<string[]>((resolve,reject)=>{
-      const request=indexedDB.open("atarang",10);
+      const request=indexedDB.open("atarang",11);
       request.onerror=()=>reject(request.error);
       request.onsuccess=()=>{const get=request.result.transaction("separations").objectStore("separations").getAll();get.onsuccess=()=>resolve(get.result.flatMap(record=>record.manifest.stems.map((stem:{kind:string})=>stem.kind)));get.onerror=()=>reject(get.error)};
     }));

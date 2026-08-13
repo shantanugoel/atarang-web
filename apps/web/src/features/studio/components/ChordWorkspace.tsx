@@ -6,7 +6,7 @@ import {
   UploadSimple,
   WarningCircle,
 } from "@phosphor-icons/react";
-import type { UserChartV1 } from "@atarang/contracts";
+import type { UserChartV1,UserChordV1 } from "@atarang/contracts";
 import {
   exportChordPro,
   parseChordPro,
@@ -15,6 +15,7 @@ import {
 import { UNRELIABLE_CONFIDENCE } from "../../analysis/chordDetection";
 import { bestChordShape } from "../../chords/shapes";
 import { useCharts } from "../../chords/useCharts";
+import{useUserChords}from"../../chords/useUserChords";
 import { useStudioStore } from "../studioStore";
 import { useChordAnalysis } from "../../chords/useChordAnalysis";
 import { uuidV7 } from "../../../storage/ids";
@@ -22,8 +23,8 @@ import styles from "./ChordWorkspace.module.css";
 
 const FRET_ROWS = 5;
 
-function ChordDiagram({ chord }: { chord: string }) {
-  const shape = bestChordShape(chord);
+function ChordDiagram({ chord,userChords }: { chord: string;userChords:readonly UserChordV1[] }) {
+  const shape = bestChordShape(chord,userChords);
   if (!shape) return null;
   // Open shapes are drawn from the nut; a barre form is drawn from its own
   // fret, with the position marked, so the box stays five rows tall.
@@ -50,7 +51,7 @@ function ChordDiagram({ chord }: { chord: string }) {
           return <circle key={string} cx={16 + string * 12} cy={18 + (row + 0.5) * 14} r="4" />;
         })}
       </svg>
-      <figcaption>{chord}</figcaption>
+      <figcaption>{chord}{shape.userDefined&&<small>Your voicing</small>}</figcaption>
     </figure>
   );
 }
@@ -158,6 +159,7 @@ export function ChordWorkspace({
   seekTo?: ((seconds: number) => void) | undefined;
 }) {
   const { charts, save, remove } = useCharts(originalId),
+    {chords:userChords}=useUserChords(),
     analysis = useChordAnalysis(originalId),
     selectedId = useStudioStore((state) => state.chartId),
     setSelectedId = useStudioStore((state) => state.setChartId),
@@ -447,7 +449,7 @@ export function ChordWorkspace({
       {unique.length > 0 && (
         <div className={styles.diagrams}>
           {unique.map((chord) => (
-            <ChordDiagram chord={chord} key={chord} />
+            <ChordDiagram chord={chord} userChords={userChords??[]} key={chord} />
           ))}
         </div>
       )}

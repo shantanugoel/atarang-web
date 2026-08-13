@@ -7,6 +7,7 @@ import {
   assertPracticeState,
   assertSeparationManifest,
   assertUserChart,
+  assertUserChord,
 } from "@atarang/contracts";
 import { database, type QuarantineRecord } from "./database";
 import { fileForOpfsPath, removeOpfsDirectory } from "./opfs";
@@ -108,6 +109,7 @@ async function scan() {
       await quarantine("record", record.id, "invalid_chart", true);
     }
   }
+  for(const record of await db.getAll("userChords")){try{assertUserChord(record.document)}catch{await quarantine("record",record.id,"invalid_user_chord",true)}}
   for (const record of await db.getAll("models")) {
     try {
       assertModelArtifactManifest(record.manifest);

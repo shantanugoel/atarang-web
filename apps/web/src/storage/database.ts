@@ -1,5 +1,5 @@
 import { openDB, type DBSchema } from "idb";
-import type { BeatGridV1, ChordAnalysisV1, LyricsDocumentV1, ModelArtifactManifestV1, PerformanceManifestV1, PracticeStateV1, SeparationManifestV1, StemKind, UserChartV1 } from "@atarang/contracts";
+import type { BeatGridV1, ChordAnalysisV1, LyricsDocumentV1, ModelArtifactManifestV1, PerformanceManifestV1, PracticeStateV1, SeparationManifestV1, StemKind, UserChartV1, UserChordV1 } from "@atarang/contracts";
 
 export interface StoredRecord { id: string; schemaVersion: number; createdAt: string; updatedAt: string }
 export interface OriginalRecord extends StoredRecord {
@@ -36,6 +36,7 @@ export interface AtarangDatabase extends DBSchema {
   practice: { key: string; value: StoredRecord & { originalId: string; revision: number; document: PracticeStateV1 } };
   lyrics: { key:string;value:StoredRecord & {originalId:string;revision:number;document:LyricsDocumentV1} };
   charts: { key:string;value:StoredRecord & {originalId:string;revision:number;document:UserChartV1} };
+  userChords:{key:string;value:StoredRecord & {revision:number;document:UserChordV1}};
   beats: {key:string;value:BeatGridRecord};
   chordAnalyses:{key:string;value:ChordAnalysisRecord};
   performances:{key:string;value:PerformanceRecord};
@@ -47,7 +48,7 @@ export interface AtarangDatabase extends DBSchema {
   waveforms: { key: string; value: WaveformRecord };
 }
 
-export const database = openDB<AtarangDatabase>("atarang", 10, {
+export const database = openDB<AtarangDatabase>("atarang", 11, {
   upgrade(db) {
     if (!db.objectStoreNames.contains("originals")) db.createObjectStore("originals", { keyPath: "id" });
     if (!db.objectStoreNames.contains("blobs")) db.createObjectStore("blobs", { keyPath: "id" });
@@ -55,6 +56,7 @@ export const database = openDB<AtarangDatabase>("atarang", 10, {
     if (!db.objectStoreNames.contains("practice")) db.createObjectStore("practice", { keyPath: "id" });
     if (!db.objectStoreNames.contains("lyrics")) db.createObjectStore("lyrics", { keyPath: "id" });
     if (!db.objectStoreNames.contains("charts")) db.createObjectStore("charts", { keyPath: "id" });
+    if (!db.objectStoreNames.contains("userChords")) db.createObjectStore("userChords", { keyPath: "id" });
     if (!db.objectStoreNames.contains("beats")) db.createObjectStore("beats", { keyPath: "id" });
     if (!db.objectStoreNames.contains("chordAnalyses")) db.createObjectStore("chordAnalyses", { keyPath: "id" });
     if (!db.objectStoreNames.contains("performances")) db.createObjectStore("performances", { keyPath: "id" });

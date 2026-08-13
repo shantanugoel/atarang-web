@@ -21,6 +21,7 @@
         "practice": {"type": "array", "items": {"type": "object"}},
         "lyrics": {"type": "array", "items": {"type": "object"}},
         "charts": {"type": "array", "items": {"type": "object"}},
+        "userChords": {"type": "array", "items": {"type": "object"}},
         "beats": {"type": "array", "items": {"type": "object"}}
       }
     },

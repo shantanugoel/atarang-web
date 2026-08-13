@@ -48,7 +48,7 @@ test("an installed WebGPU model works without a benchmark and reports inference 
   });
   await page.goto("/settings");
   await page.evaluate(async(manifest)=>{
-    await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}});
+    await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}});
   },browserModelManifest);
   await page.reload();
   await expect(page.getByText("Ready · not benchmarked")).toBeVisible();
@@ -76,7 +76,7 @@ test("a running model test blocks concurrent separation and can be cancelled",as
   await page.route("**/models/htdemucs-web-onnx/manifest.json",route=>route.fulfill({json:browserModelManifest}));
   await page.addInitScript(()=>{const NativeWorker=Worker;class StalledQualificationWorker{onmessage:((event:MessageEvent)=>void)|null=null;onerror:((event:ErrorEvent)=>void)|null=null;name="";constructor(url:string|URL,options?:WorkerOptions){this.name=options?.name??"";if(!["atarang-capability-probe","atarang-local-support-probe"].includes(this.name))return new NativeWorker(url,options) as unknown as StalledQualificationWorker}postMessage(message:{type:string;requestId:string}){if(this.name==="atarang-local-support-probe")setTimeout(()=>this.onmessage?.(new MessageEvent("message",{data:{type:"capability/result",requestId:message.requestId,backend:"webgpu",status:"candidate",reason:"model_correctness_probe_required"}})),10)}terminate(){}}Object.defineProperty(globalThis,"Worker",{value:StalledQualificationWorker,configurable:true})});
   await page.goto("/settings");
-  await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
+  await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
   await page.reload();
   await page.getByRole("button",{name:"Test performance (optional)"}).click();
   await expect(page.getByText(/Running optional performance test/)).toBeVisible();
@@ -102,7 +102,7 @@ test("browser separation falls back to the processor when there is no WebGPU ada
   await page.addInitScript(()=>{const NativeWorker=Worker;class SupportWorker{onmessage:((event:MessageEvent)=>void)|null=null;onerror:((event:ErrorEvent)=>void)|null=null;constructor(url:string|URL,options?:WorkerOptions){if(options?.name!=="atarang-local-support-probe")return new NativeWorker(url,options) as unknown as SupportWorker}postMessage(message:{requestId:string}){setTimeout(()=>this.onmessage?.(new MessageEvent("message",{data:{type:"capability/result",requestId:message.requestId,backend:"wasm",reason:"cpu_fallback_available"}})),10)}terminate(){}}Object.defineProperty(globalThis,"Worker",{value:SupportWorker,configurable:true})});
   await page.route("**/models/htdemucs-web-onnx/manifest.json",route=>route.fulfill({json:browserModelManifest}));
   await page.goto("/settings");
-  await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
+  await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"cpu-fallback.wav",mimeType:"audio/wav",buffer:silentWav()});
   await page.getByRole("button",{name:"Separate song"}).click();
@@ -117,7 +117,7 @@ test("browser separation stays disabled when the quick WebGPU probe fails",async
   await page.addInitScript(()=>{const NativeWorker=Worker;class SupportWorker{onmessage:((event:MessageEvent)=>void)|null=null;onerror:((event:ErrorEvent)=>void)|null=null;constructor(url:string|URL,options?:WorkerOptions){if(options?.name!=="atarang-local-support-probe")return new NativeWorker(url,options) as unknown as SupportWorker}postMessage(){setTimeout(()=>this.onerror?.(new ErrorEvent("error")),10)}terminate(){}}Object.defineProperty(globalThis,"Worker",{value:SupportWorker,configurable:true})});
   await page.route("**/models/htdemucs-web-onnx/manifest.json",route=>route.fulfill({json:browserModelManifest}));
   await page.goto("/settings");
-  await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
+  await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"unsupported-webgpu.wav",mimeType:"audio/wav",buffer:silentWav()});
   await page.getByRole("button",{name:"Separate song"}).click();
@@ -131,7 +131,7 @@ test("a stalled storage preflight times out with a persistent explanation",async
   await page.route("**/models/htdemucs-web-onnx/manifest.json",route=>route.fulfill({json:browserModelManifest}));
   await page.addInitScript(()=>{const NativeWorker=Worker;class SupportWorker{onmessage:((event:MessageEvent)=>void)|null=null;onerror:((event:ErrorEvent)=>void)|null=null;constructor(url:string|URL,options?:WorkerOptions){if(options?.name!=="atarang-local-support-probe")return new NativeWorker(url,options) as unknown as SupportWorker}postMessage(message:{requestId:string}){setTimeout(()=>this.onmessage?.(new MessageEvent("message",{data:{type:"capability/result",requestId:message.requestId,backend:"webgpu",status:"candidate",reason:"model_correctness_probe_required"}})),10)}terminate(){}}Object.defineProperty(globalThis,"Worker",{value:SupportWorker,configurable:true})});
   await page.goto("/settings");
-  await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
+  await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"stalled-preflight.wav",mimeType:"audio/wav",buffer:silentWav()});
   // The analysis pass holds this song's mutation lease while it runs, which is
@@ -154,9 +154,9 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
   const originalId="019fef4f-9c77-7a3f-94ca-ef4214a806d1",staleOriginalId="019fef4f-9c77-7a3f-94ca-ef4214a806d0",separationId="019fef4f-9c77-7a3f-94ca-ef4214a806d2",sha="a".repeat(64),now="2026-08-11T00:00:00.000Z";
   await page.goto("/");
   await page.evaluate(async({originalId,staleOriginalId,separationId,sha,now})=>{
-    await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction(["originals","separations"],"readwrite"),original={id:originalId,schemaVersion:1,createdAt:now,updatedAt:now,title:"Separated fixture",artist:"Test",sourceFileName:"fixture.wav",sourceMediaType:"audio/wav",byteLength:44,durationUs:1_000_000,contentSha256:sha,blobId:`sha256:${sha}`},stems=["vocals","drums","bass","other"].map(kind=>({kind,blobId:`sha256:${sha}`,sampleRate:44_100,channels:2,durationFrames:44_100,variants:[{encoding:"pcm-f32le-wav",mediaType:"audio/wav",byteLength:44,sha256:sha}]})),manifest={schema:"atarang.separation/1",separationId,original:{originalId:staleOriginalId,contentSha256:sha,sourceMediaType:"audio/wav",sampleRate:44_100,channels:2,durationFrames:44_100},model:{modelId:"htdemucs-4stem",artifactVersion:"test",artifactSha256:sha,upstream:"facebookresearch/demucs htdemucs",license:"MIT"},pipeline:{implementation:"server-pytorch",implementationVersion:"test",decodeVersion:"test",preprocessVersion:"test",segmentFrames:343_980,overlapFrames:85_995,shifts:1,postprocessVersion:"test"},stems,provenance:{mode:"local",createdAt:now}};transaction.objectStore("originals").put(original);transaction.objectStore("separations").put({id:separationId,originalId:staleOriginalId,schemaVersion:1,createdAt:now,updatedAt:now,manifest,bindings:Object.fromEntries(stems.map(stem=>[stem.kind,stem.blobId]))});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}});
+    await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction(["originals","separations"],"readwrite"),original={id:originalId,schemaVersion:1,createdAt:now,updatedAt:now,title:"Separated fixture",artist:"Test",sourceFileName:"fixture.wav",sourceMediaType:"audio/wav",byteLength:44,durationUs:1_000_000,contentSha256:sha,blobId:`sha256:${sha}`},stems=["vocals","drums","bass","other"].map(kind=>({kind,blobId:`sha256:${sha}`,sampleRate:44_100,channels:2,durationFrames:44_100,variants:[{encoding:"pcm-f32le-wav",mediaType:"audio/wav",byteLength:44,sha256:sha}]})),manifest={schema:"atarang.separation/1",separationId,original:{originalId:staleOriginalId,contentSha256:sha,sourceMediaType:"audio/wav",sampleRate:44_100,channels:2,durationFrames:44_100},model:{modelId:"htdemucs-4stem",artifactVersion:"test",artifactSha256:sha,upstream:"facebookresearch/demucs htdemucs",license:"MIT"},pipeline:{implementation:"server-pytorch",implementationVersion:"test",decodeVersion:"test",preprocessVersion:"test",segmentFrames:343_980,overlapFrames:85_995,shifts:1,postprocessVersion:"test"},stems,provenance:{mode:"local",createdAt:now}};transaction.objectStore("originals").put(original);transaction.objectStore("separations").put({id:separationId,originalId:staleOriginalId,schemaVersion:1,createdAt:now,updatedAt:now,manifest,bindings:Object.fromEntries(stems.map(stem=>[stem.kind,stem.blobId]))});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}});
   },{originalId,staleOriginalId,separationId,sha,now});
-  expect(await page.evaluate(async()=>new Promise<number>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const get=request.result.transaction("separations").objectStore("separations").getAll();get.onsuccess=()=>resolve(get.result.length);get.onerror=()=>reject(get.error)}}))).toBe(1);
+  expect(await page.evaluate(async()=>new Promise<number>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const get=request.result.transaction("separations").objectStore("separations").getAll();get.onsuccess=()=>resolve(get.result.length);get.onerror=()=>reject(get.error)}}))).toBe(1);
   // Stems the browser has evicted are not offered, so the fixture has to put a
   // real file in OPFS and a blob record pointing at it, exactly like an import —
   // decodable audio at its recorded byte length, or the integrity scan
@@ -164,7 +164,7 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
   expect(await page.evaluate(async({sha,bytes})=>{
     const root=await navigator.storage.getDirectory(),directory=await root.getDirectoryHandle("blobs",{create:true}),handle=await directory.getFileHandle(`${sha}.wav`,{create:true});
     const writable=await handle.createWritable();await writable.write(new Uint8Array(bytes));await writable.close();
-    return new Promise<boolean>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("blobs","readwrite"),now=new Date().toISOString();transaction.objectStore("blobs").put({id:`sha256:${sha}`,schemaVersion:1,createdAt:now,updatedAt:now,sha256:sha,byteLength:bytes.length,mediaType:"audio/wav",opfsPath:`blobs/${sha}.wav`,referenceCount:4});transaction.oncomplete=()=>{db.close();resolve(true)};transaction.onerror=()=>reject(transaction.error)}});
+    return new Promise<boolean>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("blobs","readwrite"),now=new Date().toISOString();transaction.objectStore("blobs").put({id:`sha256:${sha}`,schemaVersion:1,createdAt:now,updatedAt:now,sha256:sha,byteLength:bytes.length,mediaType:"audio/wav",opfsPath:`blobs/${sha}.wav`,referenceCount:4});transaction.oncomplete=()=>{db.close();resolve(true)};transaction.onerror=()=>reject(transaction.error)}});
   },{sha,bytes:[...silentWav()]})).toBe(true);
   await page.goto("/library");
   await page.getByRole("button",{name:"Separated 1"}).click();
@@ -213,6 +213,45 @@ test("the studio keeps the view you set when you leave and come back",async({pag
   await expect(page.getByRole("tab",{name:"Chords"})).toHaveAttribute("aria-selected","true");
 });
 
+test("a saved guitar voicing replaces the catalogue across songs",async({page,isMobile})=>{
+  const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
+  await page.goto("/settings#chords");
+  await expect(page.getByRole("heading",{name:"Chord voicing library"})).toBeVisible();
+  for(const[label,fret]of [["Low E fret","8"],["A fret","10"],["D fret","10"],["G fret","9"],["B fret","8"],["High E fret","8"]]as const)await page.getByLabel(label).selectOption(fret);
+  await page.getByRole("button",{name:"Save voicing"}).click();
+  await expect(page.getByRole("alert")).toContainText("high-position chord needs a barre fret");
+  await page.getByLabel("Barre fret").selectOption("8");
+  await page.getByRole("button",{name:"Save voicing"}).click();
+  await expect(page.getByRole("button",{name:"Edit C voicing"})).toBeVisible();
+  const downloadPromise=page.waitForEvent("download");await page.getByRole("button",{name:"Backup library"}).click();const backup=await downloadPromise,backupPath=await backup.path();expect(backupPath).toBeTruthy();
+  let songUrl="";for(const name of ["voicing-one.wav","voicing-two.wav"]){
+    await page.getByRole("link",{name:"Library"}).click();
+    await page.getByLabel("Choose audio to import").setInputFiles({name,mimeType:"audio/wav",buffer:silentWav(44_100)});
+    await expect(page).toHaveURL(/\/studio\/[0-9a-f-]+/);
+    songUrl=page.url();
+    if(isMobile)await page.getByRole("button",{name:"Song",exact:true}).click();
+    await page.getByRole("tab",{name:"Chords"}).click();
+    await page.getByRole("button",{name:"Paste chart"}).click();
+    await page.getByLabel("Paste ChordPro chart").fill(`{title: ${name}}\n[C]Shared voicing`);
+    await page.getByRole("button",{name:"Add chart"}).click();
+    await expect(page.getByText("Your voicing")).toBeVisible();
+    await expect(page.getByRole("img",{name:"C guitar chord diagram"})).toBeVisible();
+  }
+  await page.getByRole("navigation",{name:"Primary navigation"}).getByRole("link",{name:"Settings"}).click();
+  page.once("dialog",dialog=>dialog.accept());
+  await page.getByRole("button",{name:"Remove C voicing"}).click();
+  await expect(page.getByText("No saved voicings yet.")).toBeVisible();
+  await page.goto(songUrl);
+  if(isMobile)await page.getByRole("button",{name:"Song",exact:true}).click();
+  await page.getByRole("tab",{name:"Chords"}).click();
+  await expect(page.getByText("Your voicing")).toBeHidden();
+  await expect(page.getByRole("img",{name:"C guitar chord diagram"})).toBeVisible();
+  await page.getByRole("navigation",{name:"Primary navigation"}).getByRole("link",{name:"Settings"}).click();
+  await page.getByLabel("Choose Atarang backup").setInputFiles(backupPath!);
+  await expect(page.getByRole("button",{name:"Edit C voicing"})).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("the Library category is in the URL, so Back returns to the list you were reading",async({page})=>{
   await page.goto("/library");
   await page.getByRole("button",{name:/^Performances/}).click();
@@ -255,7 +294,7 @@ test("the Library previews sources and bulk removal preserves shared media",asyn
 test("a recorded take can be removed without a source song",async({page})=>{
   const performanceId="019fef4f-9c77-7a3f-94ca-ef4214a806e1",originalId="019fef4f-9c77-7a3f-94ca-ef4214a806e2",sha="b".repeat(64),now="2026-08-11T00:00:00.000Z";
   await page.goto("/");
-  await page.evaluate(async({performanceId,originalId,sha,now})=>new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("performances","readwrite"),asset={blobId:`sha256:${sha}`,sha256:sha,byteLength:100,mediaType:"audio/wav"},manifest={schema:"atarang.performance/1",performanceId,originalId,revision:0,startedAt:now,endedAt:"2026-08-11T00:00:01.000Z",sampleRate:44_100,channels:2,durationFrames:44_100,mic:asset,backing:asset,inputOffsetUs:0,edit:{trimStartUs:0,trimEndUs:1_000_000,fadeInUs:0,fadeOutUs:0},updatedAt:now};transaction.objectStore("performances").put({id:performanceId,originalId,revision:0,schemaVersion:1,createdAt:now,updatedAt:now,manifest});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}}),{performanceId,originalId,sha,now});
+  await page.evaluate(async({performanceId,originalId,sha,now})=>new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("performances","readwrite"),asset={blobId:`sha256:${sha}`,sha256:sha,byteLength:100,mediaType:"audio/wav"},manifest={schema:"atarang.performance/1",performanceId,originalId,revision:0,startedAt:now,endedAt:"2026-08-11T00:00:01.000Z",sampleRate:44_100,channels:2,durationFrames:44_100,mic:asset,backing:asset,inputOffsetUs:0,edit:{trimStartUs:0,trimEndUs:1_000_000,fadeInUs:0,fadeOutUs:0},updatedAt:now};transaction.objectStore("performances").put({id:performanceId,originalId,revision:0,schemaVersion:1,createdAt:now,updatedAt:now,manifest});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}}),{performanceId,originalId,sha,now});
   await page.goto("/library?category=performances");
   await expect(page.getByText("Recorded take",{exact:true})).toBeVisible();
   await page.getByLabel("Select take from recording").check();
@@ -274,7 +313,7 @@ test("a take can be previewed, compared, remixed, and discarded",async({page,isM
   await page.evaluate(async({performanceId,originalId,micSha,backingSha,now,mic,backing})=>{
     const root=await navigator.storage.getDirectory(),directory=await root.getDirectoryHandle("qa-takes",{create:true});
     for(const[sha,bytes]of[[micSha,mic],[backingSha,backing]]as const){const handle=await directory.getFileHandle(`${sha}.wav`,{create:true}),writable=await handle.createWritable();await writable.write(new Uint8Array(bytes));await writable.close()}
-    await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction(["blobs","performances"],"readwrite"),blobs=transaction.objectStore("blobs"),asset=(sha:string,byteLength:number)=>({blobId:`sha256:${sha}`,sha256:sha,byteLength,mediaType:"audio/wav"});for(const[sha,bytes]of[[micSha,mic],[backingSha,backing]]as const)blobs.put({id:`sha256:${sha}`,schemaVersion:1,createdAt:now,updatedAt:now,sha256:sha,byteLength:bytes.length,mediaType:"audio/wav",opfsPath:`/qa-takes/${sha}.wav`,referenceCount:1});const manifest={schema:"atarang.performance/1",performanceId,originalId,revision:0,startedAt:now,endedAt:"2026-08-11T00:00:01.000Z",sampleRate:44_100,channels:2,durationFrames:44_100,mic:asset(micSha,mic.length),backing:asset(backingSha,backing.length),inputOffsetUs:0,deviceSettings:{},edit:{trimStartUs:0,trimEndUs:1_000_000,fadeInUs:0,fadeOutUs:0},updatedAt:now};transaction.objectStore("performances").put({id:performanceId,originalId,revision:0,schemaVersion:1,createdAt:now,updatedAt:now,manifest});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})
+    await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction(["blobs","performances"],"readwrite"),blobs=transaction.objectStore("blobs"),asset=(sha:string,byteLength:number)=>({blobId:`sha256:${sha}`,sha256:sha,byteLength,mediaType:"audio/wav"});for(const[sha,bytes]of[[micSha,mic],[backingSha,backing]]as const)blobs.put({id:`sha256:${sha}`,schemaVersion:1,createdAt:now,updatedAt:now,sha256:sha,byteLength:bytes.length,mediaType:"audio/wav",opfsPath:`/qa-takes/${sha}.wav`,referenceCount:1});const manifest={schema:"atarang.performance/1",performanceId,originalId,revision:0,startedAt:now,endedAt:"2026-08-11T00:00:01.000Z",sampleRate:44_100,channels:2,durationFrames:44_100,mic:asset(micSha,mic.length),backing:asset(backingSha,backing.length),inputOffsetUs:0,deviceSettings:{},edit:{trimStartUs:0,trimEndUs:1_000_000,fadeInUs:0,fadeOutUs:0},updatedAt:now};transaction.objectStore("performances").put({id:performanceId,originalId,revision:0,schemaVersion:1,createdAt:now,updatedAt:now,manifest});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})
   },{performanceId,originalId,micSha,backingSha,now,mic,backing});
   await page.reload();
   if(isMobile)await page.getByRole("button",{name:"Song",exact:true}).click();
@@ -290,7 +329,7 @@ test("a take can be previewed, compared, remixed, and discarded",async({page,isM
   await page.getByLabel("Take 1 mic mix").fill("0.5");
   await expect(page.getByRole("button",{name:"Preview take"})).toBeVisible();
   await expect.poll(()=>page.evaluate(async id=>{try{const root=await navigator.storage.getDirectory();await(await(await root.getDirectoryHandle("exports")).getDirectoryHandle(id)).getDirectoryHandle("preview");return false}catch{return true}},performanceId)).toBe(true);
-  expect(await page.evaluate(async id=>new Promise<number>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const get=request.result.transaction("performances").objectStore("performances").get(id);get.onsuccess=()=>resolve(get.result.manifest.edit.micGain);get.onerror=()=>reject(get.error)}}),performanceId)).toBe(.5);
+  expect(await page.evaluate(async id=>new Promise<number>((resolve,reject)=>{const request=indexedDB.open("atarang",11);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const get=request.result.transaction("performances").objectStore("performances").get(id);get.onsuccess=()=>resolve(get.result.manifest.edit.micGain);get.onerror=()=>reject(get.error)}}),performanceId)).toBe(.5);
   await page.getByRole("button",{name:"Preview take"}).click();
   await expect(page.getByLabel("Take 1 take preview")).toBeVisible();
   page.once("dialog",dialog=>dialog.accept());
