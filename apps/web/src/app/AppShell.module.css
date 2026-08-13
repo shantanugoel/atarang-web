@@ -11,6 +11,16 @@
 .nav a.active::after { content: ""; position: absolute; inset: auto 0 -1px; height: 3px; background: var(--accent); }
 .actions { justify-self: end; display: flex; align-items: center; gap: 4px; padding: 0 14px; }
 .main { min-width: 0; min-height: 0; overflow: hidden; }
+.recovery { height: 100%; min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 28px; background: var(--bg); color: var(--text-muted); text-align: center; }
+.recovery > svg { width: 30px; height: 30px; color: var(--accent-soft); }
+.recovery strong { color: var(--text); font: 26px var(--font-display); }
+.recovery p { max-width: 460px; margin: 0; line-height: 1.6; }
+.recovery > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+.recovery a, .recovery > div button { min-height: 34px; display: inline-flex; align-items: center; padding: 0 13px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--text-soft); font-size: 12px; font-weight: 700; }
+.recovery > div > :first-child { border-color: var(--accent); color: var(--accent-soft); }
+.recovery details { max-width: min(680px, 100%); margin-top: 10px; text-align: left; }
+.recovery summary { cursor: pointer; font-size: 11px; }
+.recovery pre { max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 10px; background: var(--surface-1); border: 1px solid var(--line); font: 11px/1.5 var(--font-mono); white-space: pre-wrap; }
 @media (max-width: 760px) {
   .topbar { grid-template-columns: auto 1fr auto; }
   .brand { padding: 0 12px; }
