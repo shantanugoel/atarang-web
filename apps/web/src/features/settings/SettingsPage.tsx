@@ -69,7 +69,7 @@ export function SettingsPage() {
   const[section,setSection]=useState(settingSection);
   const refresh = useCallback(async () => { const [estimate, persisted, localBytes] = await Promise.all([navigator.storage.estimate(), navigator.storage.persisted?.() ?? false, libraryUsage()]); setStorage({ persisted, usage: estimate.usage ?? 0, quota: estimate.quota ?? 0, libraryBytes: localBytes }); }, []);
   useEffect(() => { void refresh();void runIntegrityScan().then(()=>listQuarantine()).then(items=>setQuarantineCount(items.length)); }, [refresh]);
-  useEffect(()=>{const sync=()=>{const next=settingSection();setSection(next);if(location.hash&&location.hash!==`#${next}`){history.replaceState(history.state,"",`#${next}`);document.getElementById(next)?.scrollIntoView()}};sync();addEventListener("hashchange",sync);return()=>removeEventListener("hashchange",sync)},[]);
+  useEffect(()=>{const sync=()=>{const next=settingSection();setSection(next);if(location.hash){if(location.hash!==`#${next}`)history.replaceState(history.state,"",`#${next}`);document.getElementById(next)?.scrollIntoView()}};sync();addEventListener("hashchange",sync);return()=>removeEventListener("hashchange",sync)},[]);
   const requestPersistence = async () => { const granted = await navigator.storage.persist(); await putSetting("storage.persistence", { granted, checkedAt: new Date().toISOString() }); await refresh(); };
   const saveCloudConfiguration = async () => {
     // Parsed before anything else, because `new URL` on a half-typed address
