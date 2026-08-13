@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   CaretLeft,
   CaretRight,
@@ -24,6 +24,8 @@ import styles from "./LyricsWorkspace.module.css";
 import { DEMO_TRACK } from "../useDemoAudio";
 import { uuidV7 } from "../../../storage/ids";
 import { searchLyricsCandidates, type LrclibResult } from "../../lyrics/lrclib";
+import { parseChordLine } from "../../chords/chords";
+import { usePlaybackSession } from "../PlaybackSession";
 
 const TABS: StudioTab[] = ["lyrics", "chords", "sheet", "takes"];
 const TAB_LABELS:Record<StudioTab,string>={lyrics:"Synced lyrics",chords:"Chords",sheet:"Plain lyrics",takes:"Takes"};
@@ -59,9 +61,11 @@ export function LyricsWorkspace({
     setFollowing = useStudioStore((state) => state.setLyricsFollowing),
     setLoop = useStudioStore((state) => state.setLoop),
     { document, save } = useLyrics(originalId);
+  const {playback}=usePlaybackSession();
   const [searchParams, setSearchParams] = useSearchParams();
   const singAlong = searchParams.get("sing") === "1";
   const [editing, setEditing] = useState(false);
+  const [singScale,setSingScale]=useState(1);
   const [lookupStatus, setLookupStatus] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTitle, setSearchTitle] = useState(songTitle ?? "");
@@ -299,6 +303,7 @@ export function LyricsWorkspace({
       {tab === "lyrics" && document && (
         <div
           className={`${styles.lyrics} ${singAlong ? styles.singAlong : ""}`}
+          style={singAlong ? {"--sing-scale":singScale} as CSSProperties : undefined}
           role="tabpanel"
           onScroll={() => { if (following && performance.now() > autoScrollUntil.current) setFollowing(false); }}
           onWheel={() => setFollowing(false)}
@@ -306,7 +311,7 @@ export function LyricsWorkspace({
           onPointerUpCapture={finishGesture}
           onPointerCancelCapture={finishGesture}
         >
-          {!editing && !singAlong && (
+          {!editing && (
             <AnalysisChordRail
               originalId={originalId}
               currentTimeUs={currentTimeUs}
@@ -319,6 +324,11 @@ export function LyricsWorkspace({
               <>
                 <strong>{songTitle}</strong>
                 {!following && <button onClick={() => setFollowing(true)}>Resume follow</button>}
+                <button aria-label="Rewind 10 seconds" onClick={()=>seekTo?.(Math.max(0,currentTimeUs/1_000_000-10))}>−10s</button>
+                <button disabled={!playback.ready} onClick={()=>void playback.toggle()}>{playback.playing?"Pause":"Play"}</button>
+                <button aria-label="Forward 10 seconds" onClick={()=>seekTo?.(Math.min((durationUs??currentTimeUs)/1_000_000,currentTimeUs/1_000_000+10))}>+10s</button>
+                <button aria-label="Decrease sing-along text size" onClick={()=>setSingScale(value=>Math.max(.7,value-.1))}>A−</button>
+                <button aria-label="Increase sing-along text size" onClick={()=>setSingScale(value=>Math.min(1.5,value+.1))}>A+</button>
                 <button onClick={toggleSingAlong}><CornersIn /> Exit sing-along</button>
               </>
             ) : <>
@@ -456,7 +466,9 @@ export function LyricsWorkspace({
                             {word.text}
                           </span>
                         ))
-                      : line.text}
+                      : singAlong
+                        ? parseChordLine(line.text).map((segment,segmentIndex)=><span className={styles.singSegment} key={segmentIndex}>{segment.chord&&<b>{segment.chord}</b>}<i>{segment.text}</i></span>)
+                        : line.text}
                   </p>
                 </button>
               ))}
