@@ -251,6 +251,34 @@ test("dragging the ruler above the waveform sets the A–B loop",async({page,isM
   expect(await seconds("Set loop end at playhead")).toBeCloseTo(27.6,0);
 });
 
+test("sing-along follows timed lyrics and turns lyric gestures into a loop",async({page,isMobile})=>{
+  const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
+  await page.goto("/library");
+  await page.getByLabel("Choose audio to import").setInputFiles({name:"sing-along.wav",mimeType:"audio/wav",buffer:silentWav(2_205_000)});
+  await page.getByLabel("Choose LRC lyrics").setInputFiles({name:"sing-along.lrc",mimeType:"text/plain",buffer:Buffer.from("[00:00.00]First line\n[00:20.00]Second line\n[00:40.00]Third line")});
+  await page.getByRole("button",{name:"Sing along"}).click();
+  await expect(page).toHaveURL(/sing=1/);
+  await expect(page.getByRole("button",{name:"Exit sing-along"})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(await page.evaluate(()=>innerWidth));
+  await page.mouse.wheel(0,200);
+  await expect(page.getByRole("button",{name:"Resume follow"})).toBeVisible();
+  await page.getByRole("button",{name:"Resume follow"}).click();
+  const first=page.getByRole("button",{name:/First line/}),second=page.getByRole("button",{name:/Second line/}),firstBox=(await first.boundingBox())!,secondBox=(await second.boundingBox())!;
+  if(isMobile){
+    const touch={pointerId:1,pointerType:"touch",button:0,buttons:1,bubbles:true};
+    await first.dispatchEvent("pointerdown",touch);await page.waitForTimeout(550);await first.dispatchEvent("pointerup",{...touch,buttons:0});
+    await first.dispatchEvent("pointerdown",touch);await second.dispatchEvent("pointerover",touch);await second.dispatchEvent("pointerup",{...touch,buttons:0});
+  }else{
+    await page.mouse.move(firstBox.x+firstBox.width/2,firstBox.y+firstBox.height/2);await page.mouse.down();await page.waitForTimeout(550);await page.mouse.up();
+    await page.mouse.move(firstBox.x+firstBox.width/2,firstBox.y+firstBox.height/2);await page.mouse.down();await page.mouse.move(secondBox.x+secondBox.width/2,secondBox.y+secondBox.height/2,{steps:6});await page.mouse.up();
+  }
+  await page.getByRole("button",{name:"Exit sing-along"}).click();
+  if(isMobile)await page.getByRole("button",{name:"Practice",exact:true}).click();
+  await expect(page.getByRole("button",{name:"Set loop start at playhead"})).toContainText("00:00.000");
+  await expect(page.getByRole("button",{name:"Set loop end at playhead"})).toContainText("00:40.000");
+  expect(errors).toEqual([]);
+});
+
 test("a named passage is saved from the loop and restores it later",async({page,isMobile})=>{
   await page.goto("/studio");
   const lane=page.locator('[title^="Drag to set the A–B loop"]'),box=(await lane.boundingBox())!,y=box.y+box.height/2;

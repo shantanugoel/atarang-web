@@ -13,12 +13,14 @@ describe("view state across a remount",()=>{
     state().setTab("chords");
     state().setPane("mix");
     state().setChartId("chart-1");
+    state().setLyricsFollowing(false);
     state().openSong("song-a");
     state().resetPractice(240_000_000);
     expect(state().zoom).toBe(8);
     expect(state().tab).toBe("chords");
     expect(state().pane).toBe("mix");
     expect(state().chartId).toBe("chart-1");
+    expect(state().lyricsFollowing).toBe(false);
   });
 
   test("opening a different song drops what belonged to the last one",()=>{

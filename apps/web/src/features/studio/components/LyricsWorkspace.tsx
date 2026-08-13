@@ -1,8 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CaretLeft,
   CaretRight,
   Check,
+  CornersIn,
+  CornersOut,
   DownloadSimple,
   MagnifyingGlass,
   MusicNotesSimple,
@@ -11,9 +13,10 @@ import {
   UploadSimple,
   X,
 } from "@phosphor-icons/react";
+import { useSearchParams } from "react-router";
 import type { LyricsDocumentV1 } from "@atarang/contracts";
 import { StudioTab, useStudioStore } from "../studioStore";
-import { activeLyricLine, exportLrc, parseLrc } from "../../lyrics/lrc";
+import { activeLyricLine, exportLrc, lyricLoopRange, parseLrc } from "../../lyrics/lrc";
 import { useLyrics } from "../../lyrics/useLyrics";
 import { AnalysisChordRail, ChordWorkspace } from "./ChordWorkspace";
 import { TakesWorkspace } from "./TakesWorkspace";
@@ -49,7 +52,12 @@ export function LyricsWorkspace({
 }) {
   const tab = useStudioStore((state) => state.tab),
     setTab = useStudioStore((state) => state.setTab),
+    following = useStudioStore((state) => state.lyricsFollowing),
+    setFollowing = useStudioStore((state) => state.setLyricsFollowing),
+    setLoop = useStudioStore((state) => state.setLoop),
     { document, save } = useLyrics(originalId);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const singAlong = searchParams.get("sing") === "1";
   const [editing, setEditing] = useState(false);
   const [lookupStatus, setLookupStatus] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -58,7 +66,39 @@ export function LyricsWorkspace({
   const [matches, setMatches] = useState<LrclibResult[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<LrclibResult>();
   const input = useRef<HTMLInputElement>(null);
+  const activeLine = useRef<HTMLButtonElement>(null);
+  const autoScrollUntil = useRef(0);
+  const gesture = useRef<{ start: number; end: number; timer?: ReturnType<typeof setTimeout>; looped: boolean } | undefined>(undefined);
+  const suppressClickUntil = useRef(0);
   const active = document ? activeLyricLine(document, currentTimeUs) : -1;
+  useEffect(() => {
+    if (!editing && following && active >= 0) {
+      autoScrollUntil.current = performance.now() + 600;
+      activeLine.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [active, editing, following]);
+  useEffect(() => () => { if (gesture.current?.timer) clearTimeout(gesture.current.timer); }, []);
+  const toggleSingAlong = () => {
+    const next = new URLSearchParams(searchParams);
+    if (singAlong) next.delete("sing");
+    else { next.set("sing", "1"); setFollowing(true); }
+    setSearchParams(next);
+  };
+  const loopLines = (from: number, to: number) => {
+    if (!document || !durationUs) return;
+    const range = lyricLoopRange(document.lines, from, to, document.offsetUs, durationUs);
+    if (range) setLoop(range[0], range[1], durationUs);
+  };
+  const finishGesture = () => {
+    const current = gesture.current;
+    if (!current) return;
+    if (current.timer) clearTimeout(current.timer);
+    if (current.looped || current.start !== current.end) {
+      loopLines(current.start, current.end);
+      suppressClickUntil.current = performance.now() + 300;
+    }
+    gesture.current = undefined;
+  };
   const create = () => {
     if (!originalId) return;
     save({
@@ -232,8 +272,16 @@ export function LyricsWorkspace({
         </div>
       )}
       {tab === "lyrics" && document && (
-        <div className={styles.lyrics} role="tabpanel">
-          {!editing && (
+        <div
+          className={`${styles.lyrics} ${singAlong ? styles.singAlong : ""}`}
+          role="tabpanel"
+          onScroll={() => { if (following && performance.now() > autoScrollUntil.current) setFollowing(false); }}
+          onWheel={() => setFollowing(false)}
+          onTouchMove={() => setFollowing(false)}
+          onPointerUpCapture={finishGesture}
+          onPointerCancelCapture={finishGesture}
+        >
+          {!editing && !singAlong && (
             <AnalysisChordRail
               originalId={originalId}
               currentTimeUs={currentTimeUs}
@@ -241,7 +289,14 @@ export function LyricsWorkspace({
               compact
             />
           )}
-          <div className={styles.editorToolbar}>
+          <div className={`${styles.editorToolbar} ${singAlong ? styles.singToolbar : ""}`}>
+            {singAlong ? (
+              <>
+                <strong>{songTitle}</strong>
+                {!following && <button onClick={() => setFollowing(true)}>Resume follow</button>}
+                <button onClick={toggleSingAlong}><CornersIn /> Exit sing-along</button>
+              </>
+            ) : <>
             <button
               onClick={() => setEditing((value) => !value)}
               aria-pressed={editing}
@@ -261,6 +316,11 @@ export function LyricsWorkspace({
               <DownloadSimple />
               Export LRC
             </button>
+            <button onClick={toggleSingAlong} disabled={editing}>
+              <CornersOut />
+              Sing along
+            </button>
+            {!editing && !following && <button onClick={() => setFollowing(true)}>Resume follow</button>}
             <span>Offset {document.offsetUs / 1000} ms</span>
             <button
               aria-label="Decrease lyric offset"
@@ -292,8 +352,9 @@ export function LyricsWorkspace({
               aria-label="Choose LRC lyrics"
               onChange={(event) => void importFile(event.target.files?.[0])}
             />
+            </>}
           </div>
-          {editing
+          {editing && !singAlong
             ? document.lines.map((line, index) => (
                 <div className={styles.editLine} key={line.id}>
                   <button
@@ -328,10 +389,23 @@ export function LyricsWorkspace({
                 <button
                   className={`${styles.timedLine} ${active === index ? styles.active : ""}`}
                   key={line.id}
-                  onClick={() =>
-                    line.startTimeUs !== undefined &&
-                    seekTo?.((line.startTimeUs + document.offsetUs) / 1_000_000)
-                  }
+                  ref={active === index ? activeLine : undefined}
+                  data-line-index={index}
+                  onPointerDown={(event) => {
+                    if (event.button !== 0 || line.startTimeUs === undefined) return;
+                    const current: NonNullable<typeof gesture.current> = { start: index, end: index, looped: false };
+                    current.timer = setTimeout(() => { current.looped = true; loopLines(index, index); }, 500);
+                    gesture.current = current;
+                  }}
+                  onPointerEnter={() => { if (gesture.current) gesture.current.end = index; }}
+                  onPointerMove={(event) => {
+                    const target = globalThis.document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-line-index]");
+                    if (gesture.current && target) gesture.current.end = Number(target.dataset.lineIndex);
+                  }}
+                  onClick={() => {
+                    if (performance.now() < suppressClickUntil.current) return;
+                    if (line.startTimeUs !== undefined) seekTo?.((line.startTimeUs + document.offsetUs) / 1_000_000);
+                  }}
                 >
                   {active === index && (
                     <CaretRight
@@ -361,7 +435,7 @@ export function LyricsWorkspace({
                   </p>
                 </button>
               ))}
-          {editing && (
+          {editing && !singAlong && (
             <button
               className={styles.addLine}
               onClick={() =>

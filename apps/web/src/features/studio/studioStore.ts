@@ -49,6 +49,8 @@ export interface StudioState {
   speedRamp: number;
   /** Waveform magnification. Lives here so switching tabs or views does not throw the view away. */
   zoom: number;
+  /** Whether timed lyrics should keep the active line centred. Manual scrolling turns this off. */
+  lyricsFollowing: boolean;
   togglePlaying(): void;
   toggleRecording(): void;
   toggleMetronome(): void;
@@ -72,6 +74,7 @@ export interface StudioState {
   /** One loop repetition finished: step the speed up, never past 1×. */
   rampSpeed(): void;
   zoomBy(steps: number): void;
+  setLyricsFollowing(following: boolean): void;
   applyPreset(preset: MixPreset): void;
   resetPractice(durationUs: number): void;
   hydratePractice(document: PracticeStateV1, durationUs: number): void;
@@ -117,6 +120,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   sections: [],
   speedRamp: 0,
   zoom: 1,
+  lyricsFollowing: true,
   togglePlaying: () => set((s) => ({ playing: !s.playing })),
   toggleRecording: () => set((s) => ({ recording: !s.recording, playing: s.recording ? s.playing : true })),
   toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
@@ -147,6 +151,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   // through the loop gets a little closer and the ramp stops when it arrives.
   rampSpeed: () => set((state) => (state.speedRamp ? { speed: Math.min(1, Math.round((state.speed + state.speedRamp / 100) * 100) / 100) } : {})),
   zoomBy: (steps) => set((state) => ({ zoom: stepZoom(state.zoom, steps) })),
+  setLyricsFollowing: (lyricsFollowing) => set({ lyricsFollowing }),
   // Each preset is the defaults plus one change, which is what makes them safe
   // to tap: any of them is a whole mix, not a modifier on the last one, and
   // Balanced is always the way back.
