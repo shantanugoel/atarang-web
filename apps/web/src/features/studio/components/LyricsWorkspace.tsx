@@ -26,6 +26,7 @@ import { uuidV7 } from "../../../storage/ids";
 import { searchLyricsCandidates, type LrclibResult } from "../../lyrics/lrclib";
 
 const TABS: StudioTab[] = ["lyrics", "chords", "sheet", "takes"];
+const TAB_LABELS:Record<StudioTab,string>={lyrics:"Synced lyrics",chords:"Chords",sheet:"Plain lyrics",takes:"Takes"};
 
 const formatTime = (timeUs?: number) =>
   timeUs === undefined
@@ -253,7 +254,7 @@ export function LyricsWorkspace({
             tabIndex={tab === item ? 0 : -1}
             onClick={() => setTab(item)}
           >
-            {item[0]!.toUpperCase() + item.slice(1)}
+            {TAB_LABELS[item]}
           </button>
         ))}
       </div>
@@ -494,6 +495,7 @@ export function LyricsWorkspace({
       {tab === "sheet" && (
         <div className={styles.emptyPanel} role="tabpanel">
           <strong>{songTitle ?? "Midnight Run"}</strong>
+          <small>Untimed lyrics for reading or printing. Use Synced lyrics to follow playback and edit timing.</small>
           {document?.lines.map((line) => (
             <p className={styles.sheetLine} key={line.id}>
               {line.text}
