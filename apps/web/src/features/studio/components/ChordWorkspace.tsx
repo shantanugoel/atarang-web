@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import {
+  ArrowClockwise,
   DownloadSimple,
   Plus,
+  SpinnerGap,
   Trash,
   UploadSimple,
   WarningCircle,
@@ -16,6 +18,7 @@ import { UNRELIABLE_CONFIDENCE } from "../../analysis/chordDetection";
 import { bestChordShape } from "../../chords/shapes";
 import { useCharts } from "../../chords/useCharts";
 import{useUserChords}from"../../chords/useUserChords";
+import { usePlaybackSession } from "../PlaybackSession";
 import { useStudioStore } from "../studioStore";
 import { useChordAnalysis } from "../../chords/useChordAnalysis";
 import { uuidV7 } from "../../../storage/ids";
@@ -159,6 +162,7 @@ export function ChordWorkspace({
   seekTo?: ((seconds: number) => void) | undefined;
 }) {
   const { charts, save, remove } = useCharts(originalId),
+    {waveformStatus,retryAnalysis}=usePlaybackSession(),
     {chords:userChords}=useUserChords(),
     analysis = useChordAnalysis(originalId),
     selectedId = useStudioStore((state) => state.chartId),
@@ -312,15 +316,29 @@ export function ChordWorkspace({
         />
       </div>
     );
-  if (!chart)
+  if (!chart) {
+    // The detection pass writes the chords, so its state is the honest answer
+    // to "why is this tab empty". Claiming "no chords yet" while the worker is
+    // still reading them is the one moment a user is most likely to be looking.
+    const failed = waveformStatus === "error",
+      detecting = !failed && (waveformStatus === "analyzing" || analysis === undefined),
+      [heading, body] = failed
+        ? ["Chord detection failed", "This audio could not be analyzed. Retry, or bring your own chart."]
+        : detecting
+          ? ["Reading chords from the audio…", "Detection runs in the background — play, mix, or write lyrics while it finishes."]
+          : ["No chords found in this track", "Detection finished without a chord it would stand behind. Import ChordPro or paste a chart instead."];
     return (
-      <div className={styles.empty} role="tabpanel">
-        <strong>No chord chart yet</strong>
-        <p>
-          Run chord detection, import ChordPro, or paste a chart. Each chart
-          stays independent.
-        </p>
+      <div className={styles.empty} role={detecting ? "status" : "tabpanel"}>
+        {detecting && <SpinnerGap className={styles.spin} aria-hidden />}
+        <strong>{heading}</strong>
+        <p>{body}</p>
         <div>
+          {failed && (
+            <button onClick={retryAnalysis}>
+              <ArrowClockwise />
+              Retry chord detection
+            </button>
+          )}
           <button onClick={() => input.current?.click()}>
             <UploadSimple />
             Import ChordPro
@@ -354,6 +372,7 @@ export function ChordWorkspace({
         />
       </div>
     );
+  }
   return (
     <div className={styles.chart} role="tabpanel">
       <div className={styles.toolbar}>

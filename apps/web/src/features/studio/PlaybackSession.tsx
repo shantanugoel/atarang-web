@@ -18,6 +18,8 @@ export interface PlaybackSession {
   playback: ImportedPlayback;
   waveform: WaveformRecord | null;
   waveformStatus: "idle" | "analyzing" | "ready" | "error";
+  /** Re-runs the waveform/beat/chord pass after a failure. */
+  retryAnalysis(): void;
   beatGrid: BeatGridV1 | null | undefined;
   setTempo(bpm: number): void;
   separation: SeparationRecord | null | undefined;
@@ -112,5 +114,5 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [original, playback.currentTimeUs, playbackSeekBy, playbackToggle, setLoopEnd, setLoopStart, toggleMetronome, toggleRecording]);
 
-  return <Context.Provider value={{ original, playback, waveform: waveform.waveform, waveformStatus: waveform.status, beatGrid: beats.grid, setTempo: beats.setTempo, separation, started }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ original, playback, waveform: waveform.waveform, waveformStatus: waveform.status, retryAnalysis: waveform.retry, beatGrid: beats.grid, setTempo: beats.setTempo, separation, started }}>{children}</Context.Provider>;
 }
