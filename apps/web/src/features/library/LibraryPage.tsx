@@ -60,7 +60,10 @@ export function LibraryPage() {
     try {
       const song = await importLocalFile(file, setProgress);
       setProgress(null);
-      await navigate(`/studio/${song.id}`);
+      // Landing straight in Studio silently decides for the user whether stems
+      // get made. The sheet that already asks that question is one query
+      // parameter away, and the demo row has always used it.
+      await navigate(`/studio/${song.id}?separate=1`);
     } catch (caught) {
       const code = caught instanceof Error ? caught.message : "storage_unavailable";
       setProgress(null); setError(errorText[code] ?? "Import failed safely. Your existing library was not changed.");
@@ -77,7 +80,7 @@ export function LibraryPage() {
       if(result.files)await importSeparationPackage(result.original, result.files, () => undefined);
       try { await result.purge(); } catch { setError("Imported successfully; temporary result cleanup will retry by retention policy."); }
       setYoutubeUrl(""); setRightsConfirmed(false);
-      await navigate(`/studio/${result.original.id}`);
+      await navigate(`/studio/${result.original.id}${result.files ? "" : "?separate=1"}`);
     } catch (caught) {
       setError(controller.signal.aborted ? "YouTube acquisition cancelled. Any source already verified and imported into your Library is retained." : caught instanceof Error ? caught.message : "youtube_acquisition_failed");
     } finally { setProgress(null); setYoutubeProgress(null); youtubeController.current = null; }
