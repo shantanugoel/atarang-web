@@ -384,6 +384,7 @@ user notices immediately. Within a phase, order is by ROI.
    signal lets the app be honest about A1 before A1 is solved.
 6. **G1 · Mixer presets only** — a named map over the existing store; defer pan
    and meters.
+Addendum: The app keeps losing state on switching between tabs and things. We should fix this thoroughly by checking all such ux patterns.
 
 ### Phase 2 — make the analysis trustworthy (weeks)
 
