@@ -410,8 +410,8 @@ Addendum: The app keeps losing state on switching between tabs and things. We sh
 14. **I1 · Take preview and comparison** — closes the recording loop.
 15. **A3 · User chord library** — the largest gap, and the most valuable *after*
     A1, since it is far more useful to correct good detections than bad ones.
-16. **C2 · Smaller model** — reach, once the thing being reached is worth it.
-17. **G1 · Pan and live meters** — the remainder of the mixer work.
+16. **G1 · Pan and live meters** — the remainder of the mixer work.
+17. **C2 · Smaller model** — reach, once the thing being reached is worth it.
 
 ### Two notes on the ordering
 
