@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   ArrowClockwise,
   DownloadSimple,
@@ -171,7 +171,8 @@ export function ChordWorkspace({
     [pasting, setPasting] = useState(false),
     [paste, setPaste] = useState(""),
     [issues, setIssues] = useState<string[]>([]),
-    input = useRef<HTMLInputElement>(null);
+    input = useRef<HTMLInputElement>(null),
+    trigger = useRef<HTMLButtonElement>(null);
   const chart =
     charts?.find((value) => value.chartId === selectedId) ?? charts?.[0];
   const rendered = useMemo(
@@ -223,8 +224,34 @@ export function ChordWorkspace({
     if (file) addText(await file.text());
     if (input.current) input.current.value = "";
   };
+  // Closing keeps the text. Someone who pasted a long chart and wants the panel
+  // out of the way has not asked to lose it, and reopening puts it back.
+  // Focus goes back to whichever control opened the panel — every view has one,
+  // and without this the removed button leaves focus on the body.
+  const closePaste = () => { setPasting(false); setIssues([]); trigger.current?.focus(); };
+  const chooseFile = (event: MouseEvent<HTMLButtonElement>) => { trigger.current = event.currentTarget; input.current?.click(); };
+  const importButton = (
+    <button onClick={chooseFile}>
+      <UploadSimple />
+      Import ChordPro
+    </button>
+  );
+  const pasteTrigger = (
+    <button
+      aria-expanded={pasting}
+      onClick={(event) => { trigger.current = event.currentTarget; if (pasting) closePaste(); else setPasting(true); }}
+    >
+      <Plus />
+      Paste chart
+    </button>
+  );
   const pastePanel = pasting && (
-    <section className={styles.paste}>
+    <section
+      className={styles.paste}
+      // Escape belongs to the innermost thing that can close, so it stops here
+      // rather than travelling on to whatever else may be listening.
+      onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); closePaste(); } }}
+    >
       <textarea
         autoFocus
         value={paste}
@@ -238,9 +265,12 @@ export function ChordWorkspace({
           {issues.map((issue) => <li key={issue}>{issue}</li>)}
         </ul>
       )}
-      <button disabled={!paste.trim()} onClick={() => addText(paste)}>
-        Add chart
-      </button>
+      <div className={styles.pasteActions}>
+        <button disabled={!paste.trim()} onClick={() => addText(paste)}>
+          Add chart
+        </button>
+        <button onClick={closePaste}>Cancel</button>
+      </div>
     </section>
   );
   const update = (change: Partial<UserChartV1>) =>
@@ -313,14 +343,8 @@ export function ChordWorkspace({
             <Plus />
             Create editable chart
           </button>
-          <button onClick={() => input.current?.click()}>
-            <UploadSimple />
-            Import ChordPro
-          </button>
-          <button onClick={() => setPasting(true)}>
-            <Plus />
-            Paste chart
-          </button>
+          {importButton}
+          {pasteTrigger}
         </div>
         {pastePanel}
         <input
@@ -356,14 +380,8 @@ export function ChordWorkspace({
               Retry chord detection
             </button>
           )}
-          <button onClick={() => input.current?.click()}>
-            <UploadSimple />
-            Import ChordPro
-          </button>
-          <button onClick={() => setPasting(true)}>
-            <Plus />
-            Paste chart
-          </button>
+          {importButton}
+          {pasteTrigger}
         </div>
         {pastePanel}
         <input
@@ -395,7 +413,7 @@ export function ChordWorkspace({
             </option>
           ))}
         </select>
-        <button onClick={() => input.current?.click()}>
+        <button onClick={chooseFile}>
           <UploadSimple />
           Import
         </button>
