@@ -72,6 +72,7 @@ export function AnalysisChordRail({
   transposeSemitones = 0,
   simplify = false,
   follow = false,
+  onChordSelect,
 }: {
   originalId?: string | undefined;
   currentTimeUs?: number;
@@ -80,6 +81,7 @@ export function AnalysisChordRail({
   transposeSemitones?: number;
   simplify?: boolean;
   follow?: boolean;
+  onChordSelect?: (chord:string)=>void;
 }) {
   const analysis = useChordAnalysis(originalId);
   const timeline = useRef<HTMLDivElement>(null);
@@ -162,7 +164,7 @@ export function AnalysisChordRail({
             style={{
               flexGrow: Math.max(1, segment.endTimeUs - segment.startTimeUs),
             }}
-            onClick={() => seekTo?.(segment.startTimeUs / 1_000_000)}
+            onClick={() => { seekTo?.(segment.startTimeUs / 1_000_000); onChordSelect?.(shown(segment.chord)); }}
             title={`${segment.chord} · ${Math.round(segment.confidence * 100)}%`}
           >
             <b>{shown(segment.chord)}</b>
@@ -203,6 +205,7 @@ export function ChordWorkspace({
     setTab = useStudioStore((state) => state.setTab),
     [settings, setSettings] = useState({ transposeSemitones: 0, simplify: false, capo: 0 }),
     [leadMode,setLeadMode] = useState<"both"|"lyrics"|"chords">("both"),
+    [selectedChord,setSelectedChord] = useState<string>(),
     [panel, setPanel] = useState<"paste" | "edit" | null>(null),
     [draft, setDraft] = useState(""),
     [issues, setIssues] = useState<string[]>([]),
@@ -218,10 +221,12 @@ export function ChordWorkspace({
     setPanel(null);
     setDraft("");
     setIssues([]);
+    setSelectedChord(undefined);
   }, [originalId]);
   useEffect(() => {
     if (chart) setSettings({ transposeSemitones: chart.transposeSemitones, simplify: chart.simplify, capo: chart.capo });
   }, [chart?.chartId]);
+  useEffect(()=>setSelectedChord(undefined),[settings.transposeSemitones,settings.simplify]);
   const rendered = useMemo(
     () =>
       chart?.lines.map((line) => ({
@@ -240,19 +245,8 @@ export function ChordWorkspace({
     [chart, settings.simplify, settings.transposeSemitones],
   );
   const activeLyrics = lyrics ? activeLyricLine(lyrics,currentTimeUs) : -1;
-  const unique = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          rendered?.flatMap((line) =>
-            line.segments.flatMap((segment) =>
-              segment.chord ? [segment.chord] : [],
-            ),
-          ) ?? [],
-        ),
-      ).slice(0, 4),
-    [rendered],
-  );
+  const currentSegment = analysis?.segments.find(segment=>segment.startTimeUs<=currentTimeUs&&currentTimeUs<segment.endTimeUs),
+    diagramChord = selectedChord ?? (currentSegment ? transposeChord(currentSegment.chord,settings.transposeSemitones,settings.simplify) : rendered?.flatMap(line=>line.segments).find(segment=>segment.chord)?.chord);
   const detectedText = () => `{title: ${songTitle ?? "Detected chords"}}\n${analysis?.segments
     .map((segment) => `[${segment.chord}]${Math.floor(segment.startTimeUs / 60_000_000).toString().padStart(2, "0")}:${Math.floor((segment.startTimeUs / 1_000_000) % 60).toString().padStart(2, "0")}`)
     .join("\n") ?? ""}`;
@@ -436,9 +430,10 @@ export function ChordWorkspace({
         <button disabled={panel === "edit"} onClick={edit}><PencilSimple /> Edit</button>
       </div>
       {editor}
+      {diagramChord && <div className={styles.diagrams}><span>{selectedChord ? "Selected chord" : currentSegment ? "Following playback" : "First chart chord"}</span><ChordDiagram chord={diagramChord} userChords={userChords??[]} /></div>}
       {activeView === "timeline" && analysis?.segments.length ? (
         <div className={styles.detected}>
-          <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} transposeSemitones={settings.transposeSemitones} simplify={settings.simplify} follow />
+          <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} transposeSemitones={settings.transposeSemitones} simplify={settings.simplify} follow onChordSelect={setSelectedChord} />
           <div className={styles.detectedActions}>
             <p>Detected chords stay aligned to source time. Click any segment to seek; editing saves a separate chart.</p>
             {importButton}
@@ -454,7 +449,7 @@ export function ChordWorkspace({
               <p>Selected chart · {chart.title}</p>
               {rendered?.map(line => <section key={line.id}>
                 {line.section && <h3>{line.section}</h3>}
-                <p>{line.segments.map((segment,index) => <span className={styles.leadSegment} key={index}>{leadMode !== "lyrics" && segment.chord && <b>{segment.chord}</b>}{leadMode !== "chords" && <i>{segment.text || " "}</i>}</span>)}</p>
+                <p>{line.segments.map((segment,index) => <button aria-label={segment.chord?`Show ${segment.chord} diagram`:undefined} className={styles.leadSegment} key={index} onClick={()=>segment.chord&&setSelectedChord(segment.chord)}>{leadMode !== "lyrics" && segment.chord && <b>{segment.chord}</b>}{leadMode !== "chords" && <i>{segment.text || " "}</i>}</button>)}</p>
               </section>)}
             </>
             : lyrics === undefined ? <p role="status">Opening lyrics…</p>
@@ -514,23 +509,16 @@ export function ChordWorkspace({
           <p>{chart.artist || "User chart"}</p>
         </div>
       </header>
-      {unique.length > 0 && (
-        <div className={styles.diagrams}>
-          {unique.map((chord) => (
-            <ChordDiagram chord={chord} userChords={userChords??[]} key={chord} />
-          ))}
-        </div>
-      )}
       <div className={styles.chartLines}>
         {rendered?.map((line) => (
           <section key={line.id}>
             {line.section && <h3>{line.section}</h3>}
             <p>
               {line.segments.map((segment, index) => (
-                <span key={index}>
+                <button aria-label={segment.chord?`Show ${segment.chord} diagram`:undefined} className={styles.chartSegment} key={index} onClick={()=>segment.chord&&setSelectedChord(segment.chord)}>
                   {segment.chord && <b>{segment.chord}</b>}
                   <i>{segment.text || " "}</i>
-                </span>
+                </button>
               ))}
             </p>
           </section>
