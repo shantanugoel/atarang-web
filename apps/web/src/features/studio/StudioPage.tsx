@@ -53,7 +53,7 @@ export function StudioPage() {
       <div className={styles.workspace} data-pane={pane}>
         <Mixer available={Boolean(separation)} meters={playback.meters??{}} />
         <LyricsWorkspace originalId={original?.id} songTitle={original?.title ?? DEMO_TRACK.title} artistName={original?.artist} durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} seekTo={playback.seekTo} />
-        <PracticeInspector durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} stemsAvailable={Boolean(separation)} beatGrid={beatGrid} setTempo={setTempo} />
+        <PracticeInspector durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} stemsAvailable={Boolean(separation)} beatGrid={beatGrid} setTempo={setTempo} analyzable={imported} />
       </div>
       {(playback.error||playback.recordingError||separationError) && <div className={styles.playbackError} role="alert"><WarningCircle/>{playback.error||playback.recordingError||separationError}</div>}
       {separationProgress&&<div className={styles.separationProgress} role="status"><SpinnerGap className={styles.spin}/>{separationProgress.phase==="preflight"?"Checking four-stem package…":separationProgress.phase==="writing"?"Verifying and storing stems…":"Publishing separation…"}</div>}

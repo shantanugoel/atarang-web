@@ -22,8 +22,18 @@ const formatBoundary = (timeUs: number) => { const totalMs = Math.max(0, Math.ro
 // than incomplete.
 const STEM_ONLY_HINT = "Available with four-stem playback. Separate this song to enable it.";
 
-export function PracticeInspector({ durationUs, currentTimeUs = 0, stemsAvailable = true,beatGrid,setTempo }: { durationUs?: number | undefined; currentTimeUs?: number; stemsAvailable?:boolean;beatGrid?:BeatGridV1|null|undefined;setTempo?:((bpm:number)=>void)|undefined }) {
+export function PracticeInspector({ durationUs, currentTimeUs = 0, stemsAvailable = true,beatGrid,setTempo,analyzable=true }: { durationUs?: number | undefined; currentTimeUs?: number; stemsAvailable?:boolean;beatGrid?:BeatGridV1|null|undefined;setTempo?:((bpm:number)=>void)|undefined;analyzable?:boolean }) {
   const state = useStudioStore();
+  // `undefined` is a grid still being read. `null` is one that will never
+  // arrive: the demo preview is not in the Library, so nothing ever analyzes
+  // it, and a failed pass leaves nothing behind either. Reporting both as
+  // "Analyzing" promised work that was not happening, forever.
+  const tempoLabel = beatGrid ? `${Math.round(beatGrid.bpm)} BPM` : beatGrid === undefined ? "Analyzing" : "Unavailable";
+  const tempoHint = beatGrid?.reliable ? `${Math.round(beatGrid.reliability * 100)}% beat-grid reliability`
+    : beatGrid ? "Adjusting tempo marks this grid as user-corrected."
+    : beatGrid === undefined ? "Reading the beat grid from this audio."
+    : analyzable ? "Analysis produced no beat grid. Retry it from the Chords tab."
+    : "The bundled demo is not analyzed. Add it to your Library to get a tempo.";
   const [sectionName, setSectionName] = useState("");
   // Taps only mean something in a row, so they live for the gesture and no longer.
   const taps = useRef<number[]>([]);
@@ -48,7 +58,7 @@ export function PracticeInspector({ durationUs, currentTimeUs = 0, stemsAvailabl
     </section>
     <section className={styles.controls}>
       {rows.map(({key,label,format}) => {const disabled=key!=="speed"&&!stemsAvailable;return <div className={styles.row} key={key} title={disabled?STEM_ONLY_HINT:undefined}><label>{label}</label><div className={styles.stepper}><button disabled={disabled} onClick={()=>state.adjust(key,-1)} aria-label={`Decrease ${label}`}>−</button><output>{format(state[key])}</output><button disabled={disabled} onClick={()=>state.adjust(key,1)} aria-label={`Increase ${label}`}>+</button></div></div>})}
-      {durationUs&&<div className={styles.row} title={beatGrid?.reliable?`${Math.round(beatGrid.reliability*100)}% beat-grid reliability`:"Adjusting tempo marks this grid as user-corrected."}><label>Tempo</label><div className={styles.stepper}><button disabled={!beatGrid} onClick={()=>beatGrid&&setTempo?.(beatGrid.bpm-1)} aria-label="Decrease tempo">−</button><output>{beatGrid?`${Math.round(beatGrid.bpm)} BPM`:"Analyzing"}</output><button disabled={!beatGrid} onClick={()=>beatGrid&&setTempo?.(beatGrid.bpm+1)} aria-label="Increase tempo">+</button></div></div>}
+      {durationUs&&<div className={styles.row} title={tempoHint}><label>Tempo</label><div className={styles.stepper}><button disabled={!beatGrid} onClick={()=>beatGrid&&setTempo?.(beatGrid.bpm-1)} aria-label="Decrease tempo">−</button><output>{tempoLabel}</output><button disabled={!beatGrid} onClick={()=>beatGrid&&setTempo?.(beatGrid.bpm+1)} aria-label="Increase tempo">+</button></div></div>}
       {/* The way out when the detector is unsure: tap the tempo you hear rather than nudge a wrong one into place. */}
       {durationUs&&<div className={styles.row}><label>Tap tempo</label><button className={styles.tap} disabled={!beatGrid} onClick={tap}>Tap</button></div>}
       <div className={styles.row} title={stemsAvailable?undefined:STEM_ONLY_HINT}><label htmlFor="metronome">Metronome</label><button id="metronome" disabled={!stemsAvailable} className={styles.switch} role="switch" aria-checked={state.metronome} onClick={state.toggleMetronome}><span /></button></div>
