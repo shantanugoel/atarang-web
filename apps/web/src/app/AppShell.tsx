@@ -1,10 +1,11 @@
 import { GearSix, FolderOpen, MusicNotesSimple } from "@phosphor-icons/react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { matchPath, NavLink, Outlet, useLocation } from "react-router";
 import {useEffect} from "react";
 import {runIntegrityScan} from "../storage/integrity";
 import {StorageNotice} from "./StorageNotice";
 import {NowPlayingBar} from "./NowPlayingBar";
-import {PlaybackSessionProvider} from "../features/studio/PlaybackSession";
+import {PlaybackSessionProvider,usePlaybackSession} from "../features/studio/PlaybackSession";
+import {DEMO_TRACK} from "../features/studio/useDemoAudio";
 import styles from "./AppShell.module.css";
 
 const navigation = [
@@ -13,13 +14,20 @@ const navigation = [
   { to: "/settings", label: "Settings" },
 ];
 
+function PageTitle(){
+  const{pathname}=useLocation(),{original}=usePlaybackSession(),path=pathname.replace(/\/$/,""),studio=matchPath("/studio/:songId?",path);
+  const page=path==="/library"?"Library":path==="/settings"?"Settings":studio?(original?.title??(original===undefined?"Studio":studio.params.songId?"Song not found":DEMO_TRACK.title)):"Page not found";
+  useEffect(()=>{document.title=`${page} — Atarang`},[page]);
+  return null;
+}
+
 export function AppShell() {
   useEffect(()=>{void runIntegrityScan()},[]);
   const { pathname } = useLocation();
   const inStudio = pathname.startsWith("/studio");
 
   return (
-    <PlaybackSessionProvider><div className={styles.shell}>
+    <PlaybackSessionProvider><PageTitle/><div className={styles.shell}>
       <header className={styles.topbar}>
         <NavLink to="/studio" className={styles.brand} aria-label="Atarang Studio home">
           <MusicNotesSimple weight="fill" aria-hidden />
