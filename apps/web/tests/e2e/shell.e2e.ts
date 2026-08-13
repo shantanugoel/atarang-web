@@ -250,3 +250,28 @@ test("dragging the ruler above the waveform sets the A–B loop",async({page,isM
   expect(await seconds("Set loop start at playhead")).toBeCloseTo(11.5,0);
   expect(await seconds("Set loop end at playhead")).toBeCloseTo(27.6,0);
 });
+
+test("a named passage is saved from the loop and restores it later",async({page,isMobile})=>{
+  await page.goto("/studio");
+  const lane=page.locator('[title^="Drag to set the A–B loop"]'),box=(await lane.boundingBox())!,y=box.y+box.height/2;
+  await page.mouse.move(box.x+box.width*.2,y);
+  await page.mouse.down();
+  await page.mouse.move(box.x+box.width*.4,y,{steps:8});
+  await page.mouse.up();
+  if(isMobile)await page.getByRole("button",{name:"Practice",exact:true}).click();
+  const boundary=()=>page.getByRole("button",{name:"Set loop start at playhead"}).innerText();
+  const saved=await boundary();
+  await page.getByLabel("Name for the current loop").fill("Chorus");
+  // Enter, not the button: naming a passage and pressing return is the gesture.
+  await page.getByLabel("Name for the current loop").press("Enter");
+  const section=page.getByRole("button",{name:/^Chorus/});
+  await expect(section).toBeVisible();
+  await expect(page.getByLabel("Name for the current loop")).toHaveValue("");
+  // Move the loop somewhere else, then let the saved passage put it back.
+  await page.getByRole("button",{name:"Set loop start at playhead"}).click();
+  expect(await boundary()).not.toBe(saved);
+  await section.click();
+  expect(await boundary()).toBe(saved);
+  await page.getByRole("button",{name:"Delete section Chorus"}).click();
+  await expect(section).toBeHidden();
+});

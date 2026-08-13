@@ -27,6 +27,15 @@
       "required": ["vocals", "drums", "bass", "other"],
       "properties": { "vocals": {"type":"number"}, "drums": {"type":"number"}, "bass": {"type":"number"}, "other": {"type":"number"} }
     },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "name", "startTimeUs", "endTimeUs"],
+        "properties": { "id": {"type":"string","minLength":1}, "name": {"type":"string","minLength":1}, "startTimeUs": {"type":"integer","minimum":0}, "endTimeUs": {"type":"integer","minimum":500000} }
+      }
+    },
+    "speedRampPercent": { "type": "number", "minimum": 0, "maximum": 25 },
     "updatedAt": { "type": "string", "format": "date-time" }
   }
 }

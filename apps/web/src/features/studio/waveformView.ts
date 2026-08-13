@@ -1,4 +1,3 @@
-import type { BeatGridV1 } from "@atarang/contracts";
 import type { WaveformRecord } from "../../storage/database";
 
 /** Each step halves the visible span. 64x puts about a bar on screen for a four-minute song. */
@@ -48,22 +47,3 @@ export function formatTime(timeUs: number, decimals = 0) {
 
 export const stepZoom = (zoom: number, steps: number) => Math.min(MAX_ZOOM, Math.max(1, zoom * 2 ** steps));
 
-/**
- * Nearest beat to `timeUs`, or `timeUs` unchanged when there is no grid worth
- * trusting. A loop boundary a fraction of a beat off the bar is audible on every
- * repetition, and dragging cannot hit a beat by hand — so on a reliable grid the
- * snap is unconditional, and `bypass` (the Alt key) is the way to place a
- * boundary between beats.
- */
-export function snapToBeat(timeUs: number, beatGrid?: BeatGridV1 | null, bypass = false) {
-  if (bypass || !beatGrid?.reliable || !beatGrid.beats.length) return timeUs;
-  let nearest = timeUs, distance = Infinity;
-  // ponytail: linear scan over a few thousand beats per pointermove; binary
-  // search if a grid ever gets long enough to show up in a frame budget.
-  for (const beat of beatGrid.beats) {
-    const gap = Math.abs(beat.timeUs - timeUs);
-    if (gap >= distance) break;
-    nearest = beat.timeUs; distance = gap;
-  }
-  return nearest;
-}

@@ -4,7 +4,8 @@ import type { ImportedPlayback } from "../useImportedAudio";
 import type { WaveformRecord } from "../../../storage/database";
 import type {BeatGridV1} from "@atarang/contracts";
 import { useEffect, useMemo, useRef } from "react";
-import { MAX_ZOOM, PEAKS_PER_SCREEN, displayPeaks, formatTime, snapToBeat, timeTicks } from "../waveformView";
+import { MAX_ZOOM, PEAKS_PER_SCREEN, displayPeaks, formatTime, timeTicks } from "../waveformView";
+import { snapToBeat } from "../tempo";
 import styles from "./Transport.module.css";
 
 export function Transport({ importedPlayback, waveform, waveformStatus = "idle",beatGrid,stemsAvailable = false }: { importedPlayback?: ImportedPlayback | undefined; waveform?: WaveformRecord | null | undefined; waveformStatus?: "idle"|"analyzing"|"ready"|"error";beatGrid?:BeatGridV1|null|undefined;stemsAvailable?:boolean }) {

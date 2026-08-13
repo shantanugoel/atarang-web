@@ -55,6 +55,40 @@ describe("loop drag",()=>{
   });
 });
 
+describe("saved sections",()=>{
+  test("saves the loop exactly as it stands",()=>{
+    state().setLoop(30_000_000,60_000_000,240_000_000);
+    state().saveSection("  Chorus  ");
+    expect(state().sections).toMatchObject([{name:"Chorus",startTimeUs:30_000_000,endTimeUs:60_000_000}]);
+  });
+  test("deleting one leaves the rest alone",()=>{
+    state().saveSection("One");
+    state().saveSection("Two");
+    const[first,second]=state().sections;
+    state().removeSection(first!.id);
+    expect(state().sections.map(section=>section.id)).toEqual([second!.id]);
+  });
+});
+
+describe("speed ramp",()=>{
+  test("does nothing until it is turned on",()=>{
+    state().adjust("speed",-4);
+    const before=state().speed;
+    state().rampSpeed();
+    expect(state().speed).toBe(before);
+  });
+  test("steps toward full speed on each repetition and stops there",()=>{
+    state().adjust("speed",-4);
+    state().adjust("speedRamp",5);
+    expect(state().speed).toBe(.8);
+    state().rampSpeed();
+    expect(state().speed).toBe(.85);
+    for(let repetition=0;repetition<20;repetition++)state().rampSpeed();
+    // Practising above the recording is not a thing, so 1x is the ceiling.
+    expect(state().speed).toBe(1);
+  });
+});
+
 describe("mix presets",()=>{
   test("Learn lifts the selected stem and lowers the band, without muting it",()=>{
     state().setTarget("bass");

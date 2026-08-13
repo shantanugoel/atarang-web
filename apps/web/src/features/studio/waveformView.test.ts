@@ -1,7 +1,6 @@
 import {describe,expect,test} from "bun:test";
 import type {WaveformRecord} from "../../storage/database";
-import type {BeatGridV1} from "@atarang/contracts";
-import {displayPeaks,formatTime,snapToBeat,stepZoom,timeTicks} from "./waveformView";
+import {displayPeaks,formatTime,stepZoom,timeTicks} from "./waveformView";
 
 const level=(framesPerBucket:number,count:number,shape:(index:number)=>number)=>({framesPerBucket,min:Float32Array.from({length:count},(_,index)=>-shape(index)),max:Float32Array.from({length:count},(_,index)=>shape(index)),rms:new Float32Array(count)});
 // A four-level pyramid over a song that is silent apart from one spike a tenth
@@ -54,27 +53,6 @@ describe("clock",()=>{
   test("shows tenths when asked, without losing the pad",()=>{
     expect(formatTime(9_250_000,1)).toBe("00:09.3");
     expect(formatTime(72_040_000,1)).toBe("01:12.0");
-  });
-});
-
-describe("loop snapping",()=>{
-  // 120 BPM: a beat every half second.
-  const grid=(reliable:boolean)=>({reliable,beats:Array.from({length:64},(_,index)=>({timeUs:index*500_000,beatInBar:(index%4+1) as 1|2|3|4,downbeat:index%4===0}))}) as BeatGridV1;
-  test("pulls a boundary onto the nearest beat",()=>{
-    expect(snapToBeat(2_140_000,grid(true))).toBe(2_000_000);
-    expect(snapToBeat(2_400_000,grid(true))).toBe(2_500_000);
-    expect(snapToBeat(0,grid(true))).toBe(0);
-  });
-  test("leaves the boundary alone past the last beat",()=>{
-    expect(snapToBeat(60_000_000,grid(true))).toBe(31_500_000);
-  });
-  test("does not snap to a grid the detector does not trust",()=>{
-    expect(snapToBeat(2_140_000,grid(false))).toBe(2_140_000);
-    expect(snapToBeat(2_140_000,null)).toBe(2_140_000);
-    expect(snapToBeat(2_140_000,undefined)).toBe(2_140_000);
-  });
-  test("Alt places a boundary between beats",()=>{
-    expect(snapToBeat(2_140_000,grid(true),true)).toBe(2_140_000);
   });
 });
 

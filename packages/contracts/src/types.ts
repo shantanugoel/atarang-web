@@ -12,6 +12,9 @@ export interface OriginalV1 {
   createdAt: string;
 }
 
+/** A saved passage: a loop the player named so they can come back to it. */
+export interface PracticeSectionV1 { id: string; name: string; startTimeUs: number; endTimeUs: number }
+
 export interface PracticeStateV1 {
   schema: "atarang.practice/1";
   originalId: string;
@@ -26,6 +29,11 @@ export interface PracticeStateV1 {
   countIn: 0 | 2 | 4;
   metronome: boolean;
   stemGainDb: Record<StemKind, number>;
+  // Optional so a practice document written before sections and the speed ramp
+  // still reads, which is what keeps one release of rollback available.
+  sections?: PracticeSectionV1[];
+  /** Percent added to the speed each time a loop repetition completes, up to 1×. 0 is off. */
+  speedRampPercent?: number;
   updatedAt: string;
 }
 
@@ -73,6 +81,8 @@ export function practiceStateErrors(value: unknown): string[] {
   if (![0, 2, 4].includes(state.countIn as number)) errors.push("countIn must be 0, 2, or 4");
   if (typeof state.metronome !== "boolean") errors.push("metronome must be boolean");
   if (!state.stemGainDb || STEM_KINDS.some((kind) => typeof state.stemGainDb?.[kind] !== "number" || state.stemGainDb[kind] < -60 || state.stemGainDb[kind] > 10)) errors.push("stemGainDb is invalid");
+  if (state.sections !== undefined && (!Array.isArray(state.sections) || state.sections.some((section) => !section?.id || typeof section.name !== "string" || !section.name.trim() || !Number.isSafeInteger(section.startTimeUs) || !Number.isSafeInteger(section.endTimeUs) || section.startTimeUs < 0 || section.endTimeUs - section.startTimeUs < 500_000))) errors.push("sections must be named passages at least 0.5 seconds long");
+  if (state.speedRampPercent !== undefined && (typeof state.speedRampPercent !== "number" || state.speedRampPercent < 0 || state.speedRampPercent > 25)) errors.push("speedRampPercent must be between 0 and 25");
   if (!state.updatedAt || Number.isNaN(Date.parse(state.updatedAt))) errors.push("updatedAt must be an ISO date-time");
   return errors;
 }
