@@ -13,6 +13,7 @@ import type { UserChartV1,UserChordV1 } from "@atarang/contracts";
 import {
   chordProIssues,
   exportChordPro,
+  parseChordLine,
   parseChordPro,
   transposeChord,
 } from "../../chords/chords";
@@ -201,6 +202,7 @@ export function ChordWorkspace({
     setView = useStudioStore((state) => state.setChordView),
     setTab = useStudioStore((state) => state.setTab),
     [settings, setSettings] = useState({ transposeSemitones: 0, simplify: false, capo: 0 }),
+    [leadMode,setLeadMode] = useState<"both"|"lyrics"|"chords">("both"),
     [panel, setPanel] = useState<"paste" | "edit" | null>(null),
     [draft, setDraft] = useState(""),
     [issues, setIssues] = useState<string[]>([]),
@@ -445,11 +447,14 @@ export function ChordWorkspace({
         </div>
       ) : activeView === "lyricsChords" ? (
         <div className={styles.leadSheet}>
+          <div className={styles.leadModes} aria-label="Lyrics and chords display">
+            {(["both","lyrics","chords"] as const).map(mode => <button aria-pressed={leadMode===mode} key={mode} onClick={()=>setLeadMode(mode)}>{mode === "both" ? "Lyrics + chords" : mode === "lyrics" ? "Lyrics only" : "Chords only"}</button>)}
+          </div>
           {chart ? <>
               <p>Selected chart · {chart.title}</p>
               {rendered?.map(line => <section key={line.id}>
                 {line.section && <h3>{line.section}</h3>}
-                <p>{line.segments.map((segment,index) => <span className={styles.leadSegment} key={index}>{segment.chord && <b>{segment.chord}</b>}<i>{segment.text || " "}</i></span>)}</p>
+                <p>{line.segments.map((segment,index) => <span className={styles.leadSegment} key={index}>{leadMode !== "lyrics" && segment.chord && <b>{segment.chord}</b>}{leadMode !== "chords" && <i>{segment.text || " "}</i>}</span>)}</p>
               </section>)}
             </>
             : lyrics === undefined ? <p role="status">Opening lyrics…</p>
@@ -459,10 +464,14 @@ export function ChordWorkspace({
               {lyrics.lines.map((line,index) => {
                 const time = line.startTimeUs === undefined ? undefined : line.startTimeUs + lyrics.offsetUs,
                   segment = time === undefined ? undefined : analysis?.segments.find(item => item.startTimeUs <= time && time < item.endTimeUs),
-                  chord = segment ? transposeChord(segment.chord, settings.transposeSemitones, settings.simplify) : undefined;
+                  chord = segment ? transposeChord(segment.chord, settings.transposeSemitones, settings.simplify) : undefined,
+                  inline = parseChordLine(line.text),
+                  hasInline = inline.some(item=>item.chord);
                 return <button className={activeLyrics === index ? styles.activeLine : ""} key={line.id} onClick={() => time !== undefined && seekTo?.(time / 1_000_000)}>
-                  {chord && <b>{chord}</b>}
-                  <span>{line.text}</span>
+                  <span>{inline.map((item,itemIndex)=><span className={styles.leadSegment} key={itemIndex}>
+                    {leadMode !== "lyrics" && (item.chord ? <b>{transposeChord(item.chord,settings.transposeSemitones,settings.simplify)}</b> : itemIndex === 0 && !hasInline && chord ? <b>{chord}</b> : null)}
+                    {leadMode !== "chords" && <i>{item.text || " "}</i>}
+                  </span>)}</span>
                 </button>;
               })}
             </>}
