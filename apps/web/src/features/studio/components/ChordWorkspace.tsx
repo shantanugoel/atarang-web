@@ -70,6 +70,7 @@ export function AnalysisChordRail({
   compact = false,
   transposeSemitones = 0,
   simplify = false,
+  follow = false,
 }: {
   originalId?: string | undefined;
   currentTimeUs?: number;
@@ -77,22 +78,34 @@ export function AnalysisChordRail({
   compact?: boolean;
   transposeSemitones?: number;
   simplify?: boolean;
+  follow?: boolean;
 }) {
   const analysis = useChordAnalysis(originalId);
-  if (!analysis?.segments.length) return null;
+  const timeline = useRef<HTMLDivElement>(null);
+  const [following,setFollowing] = useState(true);
+  const segments = analysis?.segments ?? [];
+  useEffect(() => setFollowing(true),[originalId]);
   const active = Math.max(
     0,
-    analysis.segments.findIndex(
+    segments.findIndex(
       (segment) =>
         segment.startTimeUs <= currentTimeUs &&
         currentTimeUs < segment.endTimeUs,
     ),
   );
   const shown = (chord: string) => transposeChord(chord, transposeSemitones, simplify),
-    current = analysis.segments[active] ?? analysis.segments[0]!,
-    next = analysis.segments
+    current = segments[active],
+    next = segments
       .slice(active + 1)
-      .find((segment) => segment.chord !== current.chord);
+      .find((segment) => segment.chord !== current?.chord);
+  useEffect(() => {
+    const rail = timeline.current,
+      button = rail?.children[active] as HTMLElement | undefined;
+    if (!follow || !following || !rail || !button || !current) return;
+    const progress = Math.max(0,Math.min(1,(currentTimeUs-current.startTimeUs)/(current.endTimeUs-current.startTimeUs)));
+    rail.scrollLeft = button.offsetLeft + button.offsetWidth * progress - rail.clientWidth / 3;
+  },[active,current,currentTimeUs,follow,following]);
+  if (!analysis || !current) return null;
   return (
     <section
       className={`${styles.analysisRail} ${compact ? styles.compactRail : ""}`}
@@ -134,8 +147,14 @@ export function AnalysisChordRail({
           point and correct what you hear.
         </p>
       )}
-      <div className={styles.chordTimeline}>
-        {analysis.segments.map((segment, index) => (
+      <div
+        ref={timeline}
+        className={styles.chordTimeline}
+        onWheel={() => follow && setFollowing(false)}
+        onTouchMove={() => follow && setFollowing(false)}
+        onPointerDown={(event) => follow && event.target === event.currentTarget && setFollowing(false)}
+      >
+        {segments.map((segment, index) => (
           <button
             key={`${segment.startTimeUs}-${index}`}
             className={index === active ? styles.currentChord : ""}
@@ -155,6 +174,7 @@ export function AnalysisChordRail({
           </button>
         ))}
       </div>
+      {follow && !following && <button className={styles.resumeFollow} onClick={() => setFollowing(true)}>Resume following</button>}
     </section>
   );
 }
@@ -416,7 +436,7 @@ export function ChordWorkspace({
       {editor}
       {activeView === "timeline" && analysis?.segments.length ? (
         <div className={styles.detected}>
-          <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} transposeSemitones={settings.transposeSemitones} simplify={settings.simplify} />
+          <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} transposeSemitones={settings.transposeSemitones} simplify={settings.simplify} follow />
           <div className={styles.detectedActions}>
             <p>Detected chords stay aligned to source time. Click any segment to seek; editing saves a separate chart.</p>
             {importButton}
