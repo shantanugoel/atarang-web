@@ -6,6 +6,7 @@ import { withSongMutationLease } from "../../storage/mutationLease";
 import { opfsPathsExist } from "../../storage/opfs";
 import { failImportOperation, getBlob, listCapabilities, listModels, publishSeparation, startImportOperation } from "../../storage/repositories";
 import { withLocalInferenceLease } from "./inferenceLease";
+import { userMessage } from "../../app/errorText";
 
 export type LocalSeparationProgress = { stage: "preflight" | "loading_model" | "separating" | "packaging" | "publishing"; progress: number };
 
@@ -37,7 +38,7 @@ export function localSeparationErrorMessage(code:string){
     local_inference_busy:"Another browser model test or separation is already running. Cancel it before starting this separation.",
     song_busy_in_another_tab:"This song is already being processed in another tab. Close the other tab or wait for it to finish.",
   };
-  return messages[code]??`Browser separation failed (${code}). No stems were published.`;
+  return userMessage(code,messages,"Browser separation failed. No stems were published.");
 }
 
 export function probeLocalBrowser(modelArtifactId:string):Promise<LocalBrowserSupport>{

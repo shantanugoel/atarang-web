@@ -4,6 +4,7 @@ import type { SeparationRecord } from "../storage/database";
 import { getBlob } from "../storage/repositories";
 import { uuidV7 } from "../storage/ids";
 import { pitchCorrectionSemitones } from "./dsp";
+import { errorCode } from "../app/errorText";
 
 const HEADER_BYTES = 8 * Int32Array.BYTES_PER_ELEMENT;
 const RING_SECONDS = 3;
@@ -25,6 +26,7 @@ export interface SeparatedPlaybackSnapshot {
   playing: boolean;
   currentTimeUs: number;
   durationUs: number;
+  /** A snake_case code. The UI owns the sentence — see `app/errorText`. */
   error: string;
   driftFrames: number;
   underruns: number;
@@ -87,7 +89,7 @@ export class SeparatedAudioEngine {
   async initialize() {
     if (this.#context || this.#disposed) return;
     if (!crossOriginIsolated || typeof SharedArrayBuffer === "undefined") {
-      this.#update({ error: "Four-stem playback requires cross-origin-isolated shared memory." });
+      this.#update({ error: "stem_isolation_required" });
       return;
     }
     try {
@@ -105,7 +107,7 @@ export class SeparatedAudioEngine {
       stretch.connect(master);this.#stretchNode=stretch;this.#applyMixer();
       await this.#loadAt(0);
     } catch (error) {
-      this.#update({ error: error instanceof Error ? error.message : "Four-stem audio could not be initialized." });
+      this.#update({ error: errorCode(error, "stem_engine_failed") });
     }
   }
 
@@ -160,9 +162,9 @@ export class SeparatedAudioEngine {
         this.#update({ ready: true });
         if (this.#wantedPlaying) { node.port.postMessage({ type: "play" }); this.#update({ playing: true }); }
       }
-      if (data.type === "playback/error") this.#update({ ready: false, playing: false, error: `Stem playback failed: ${data.code}` });
+      if (data.type === "playback/error") this.#update({ ready: false, playing: false, error: String(data.code) });
     };
-    worker.onerror = () => this.#update({ ready: false, playing: false, error: "Stem playback worker failed." });
+    worker.onerror = () => this.#update({ ready: false, playing: false, error: "stem_worker_failed" });
     worker.postMessage({
       type: "playback/stream",
       requestId: uuidV7(),
@@ -211,7 +213,7 @@ export class SeparatedAudioEngine {
     const bounded={loopEnabled:settings.loopEnabled&&settings.loopEndUs-settings.loopStartUs>=500_000&&settings.loopEndUs<=this.#snapshot.durationUs,loopStartUs:Math.max(0,Math.min(this.#snapshot.durationUs,Math.round(settings.loopStartUs))),loopEndUs:Math.max(0,Math.min(this.#snapshot.durationUs,Math.round(settings.loopEndUs))),repetitions:Math.max(1,Math.min(999,Math.round(settings.repetitions))),pauseSeconds:Math.max(0,Math.min(10,settings.pauseSeconds))};
     const streamChanged=bounded.loopEnabled!==this.#practice.loopEnabled||bounded.loopStartUs!==this.#practice.loopStartUs||bounded.loopEndUs!==this.#practice.loopEndUs;
     this.#practice=bounded;
-    if(streamChanged&&this.#context){void this.#loadAt(this.#snapshot.currentTimeUs).catch(error=>this.#update({error:error instanceof Error?error.message:"Loop could not be applied."}));return}
+    if(streamChanged&&this.#context){void this.#loadAt(this.#snapshot.currentTimeUs).catch(error=>this.#update({error:errorCode(error,"loop_failed")}));return}
     if(this.#context)this.#node?.port.postMessage({type:"practice",practice:this.#practiceDescriptor(this.#context.sampleRate)});
   }
 

@@ -1,3 +1,5 @@
+import { userMessage } from "../../app/errorText";
+
 // Pipeline stage names are for logs. These are for the person watching a
 // progress bar wondering whether anything is wrong. The server can send stages
 // this list has not seen, so unknown ones degrade to readable words.
@@ -50,7 +52,5 @@ export function cloudErrorMessage(value: unknown) {
     : `The server refused the request (${status}). Nothing was imported.`;
   // Unattributed on purpose: this catch also covers the local import that runs
   // after a download, so an unknown code is not necessarily the server's.
-  return CLOUD_ERRORS[code] ?? (/^[a-z][a-z0-9_]*$/.test(code)
-    ? `Cloud separation stopped at “${code}”. Nothing was imported or changed.`
-    : "Cloud separation stopped in a way this app could not describe. Nothing was imported or changed.");
+  return userMessage(value, CLOUD_ERRORS, "Cloud separation stopped. Nothing was imported or changed.");
 }

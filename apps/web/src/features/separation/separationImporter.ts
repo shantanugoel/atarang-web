@@ -10,7 +10,13 @@ interface WorkerResult{type:"separation/complete";requestId:string;results:{kind
 
 async function importSeparationPackageUnlocked(original:OriginalRecord,files:FileList|File[],onProgress:(progress:SeparationImportProgress)=>void){
   const list=Array.from(files);const manifestFile=list.find(file=>/\.json$/i.test(file.name));if(!manifestFile)throw new Error("invalid_manifest");
-  const parsed:unknown=JSON.parse(await manifestFile.text());assertSeparationManifest(parsed);const manifest:SeparationManifestV1=parsed;
+  // Both failures here are "this file is not a manifest" as far as a user is
+  // concerned. Left alone they escape as a JSON parser complaint or as Ajv's
+  // schema prose, neither of which is about a file the user wrote; the cause
+  // is kept for devtools.
+  let manifest:SeparationManifestV1;
+  try{const parsed:unknown=JSON.parse(await manifestFile.text());assertSeparationManifest(parsed);manifest=parsed}
+  catch(error){throw new Error("invalid_manifest",{cause:error})}
   if(manifest.original.originalId!==original.id||manifest.original.contentSha256!==original.contentSha256)throw new Error("invalid_manifest");
   const stemFiles=STEM_KINDS.map(kind=>{const file=list.find(candidate=>new RegExp(`^${kind}(?:[._-]|$)`,`i`).test(candidate.name));if(!file)throw new Error(`missing_${kind}`);return{kind,file}});
   const totalBytes=stemFiles.reduce((sum,item)=>sum+item.file.size,0);onProgress({phase:"preflight",completedBytes:0,totalBytes});const estimate=await navigator.storage.estimate();const available=(estimate.quota??0)-(estimate.usage??0);const needed=totalBytes*2+Math.max(1_073_741_824,totalBytes*.2);if(estimate.quota&&available<needed)throw new Error("quota_exceeded");

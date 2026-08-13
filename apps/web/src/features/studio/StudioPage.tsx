@@ -11,7 +11,24 @@ import { usePlaybackSession } from "./PlaybackSession";
 import { ensureStemChordAnalysis } from "./waveformAnalysis";
 import {importSeparationPackage,type SeparationImportProgress} from "../separation/separationImporter";
 import { useStudioStore } from "./studioStore";
+import { userMessage } from "../../app/errorText";
 import styles from "./StudioPage.module.css";
+
+// Codes from `importSeparationPackage` and the storage layer under it. These
+// used to reach the alert bar as-is, so "invalid_manifest" was the whole
+// explanation a user got for a four-file import that did nothing.
+const packageErrors: Record<string, string> = {
+  invalid_manifest: "That manifest is unreadable, or does not describe four stems for this song, so nothing was imported.",
+  missing_vocals: "The package has no vocals file, so nothing was imported.",
+  missing_drums: "The package has no drums file, so nothing was imported.",
+  missing_bass: "The package has no bass file, so nothing was imported.",
+  missing_other: "The package has no “other” file, so nothing was imported.",
+  result_integrity_failed: "A stem did not match its checksum, so nothing was imported.",
+  quota_exceeded: "There is not enough browser storage for four lossless stems. Free some space and try again.",
+  storage_unavailable: "Browser storage is unavailable, so nothing was imported.",
+  song_busy_in_another_tab: "This song is already being processed in another tab. Close it or wait for it to finish.",
+};
+const PACKAGE_FALLBACK = "That separation package could not be imported. The song and any existing stems are unchanged.";
 
 export function StudioPage() {
   const { songId } = useParams();
@@ -35,8 +52,8 @@ export function StudioPage() {
   if (original === undefined) return <div className={styles.routeState}><SpinnerGap className={styles.spin}/><span>Opening local audio…</span></div>;
   if (songId && !original) return <div className={styles.routeState}><WarningCircle/><strong>Song not found</strong><span>This item may have been removed from browser storage.</span><Link to="/library">Return to Library</Link></div>;
   const imported = Boolean(original);
-  const attachSeparation=async(files:FileList|null)=>{if(!original||!files?.length)return;setSeparationError("");try{await importSeparationPackage(original,files,setSeparationProgress)}catch(error){setSeparationError(error instanceof Error?error.message:"separation_failed")}finally{setSeparationProgress(null);if(separationInput.current)separationInput.current.value=""}};
-  const attachCloudSeparation=async(files:File[],purge:()=>Promise<void>)=>{if(!original)return;setSeparationError("");try{await importSeparationPackage(original,files,setSeparationProgress)}catch(error){setSeparationError(error instanceof Error?error.message:"separation_failed");throw error}finally{setSeparationProgress(null)}try{await purge()}catch{setSeparationError("Cloud result imported locally; immediate server purge failed and will retry by retention policy.")}};
+  const attachSeparation=async(files:FileList|null)=>{if(!original||!files?.length)return;setSeparationError("");try{await importSeparationPackage(original,files,setSeparationProgress)}catch(error){setSeparationError(userMessage(error,packageErrors,PACKAGE_FALLBACK))}finally{setSeparationProgress(null);if(separationInput.current)separationInput.current.value=""}};
+  const attachCloudSeparation=async(files:File[],purge:()=>Promise<void>)=>{if(!original)return;setSeparationError("");try{await importSeparationPackage(original,files,setSeparationProgress)}catch(error){setSeparationError(userMessage(error,packageErrors,PACKAGE_FALLBACK));throw error}finally{setSeparationProgress(null)}try{await purge()}catch{setSeparationError("Cloud result imported locally; immediate server purge failed and will retry by retention policy.")}};
   return (
     <div className={styles.studio}>
       <section className={styles.songbar} aria-label="Current song">
