@@ -27,10 +27,10 @@ export function Mixer({ available = true,meters={} }: { available?: boolean;mete
       </div>
       {stemList.map(({ key, label }) => (
         <section className={styles.channel} data-stem={key} key={key}>
-          <button disabled={!available} className={styles.stemName} onClick={() => state.setTarget(key)} aria-pressed={state.target === key}>{label}</button>
+          <button disabled={!available} className={styles.stemName} onClick={() => state.setTarget(key)} aria-pressed={state.target === key} aria-label={`${label}: aim presets at this stem`}>{label}</button>
           <div className={styles.channelButtons}>
-            <button disabled={!available} onClick={() => state.toggleSolo(key)} aria-pressed={state.soloed[key]} aria-label={`Solo ${label}`}>S</button>
-            <button disabled={!available} onClick={() => state.toggleMute(key)} aria-pressed={state.muted[key]} aria-label={`Mute ${label}`}>M</button>
+            <button disabled={!available} onClick={() => state.toggleSolo(key)} aria-pressed={state.soloed[key]} aria-label={`Solo ${label} track`}>S</button>
+            <button disabled={!available} onClick={() => state.toggleMute(key)} aria-pressed={state.muted[key]} aria-label={`Mute ${label} track`}>M</button>
           </div>
           <div className={styles.faderWrap}>
             <input disabled={!available} aria-label={`${label} level, ${state.levels[key]} decibels`} type="range" min="-60" max="10" step="0.5" value={state.levels[key]} onChange={(e) => state.setLevel(key, Number(e.target.value))} />
@@ -39,9 +39,14 @@ export function Mixer({ available = true,meters={} }: { available?: boolean;mete
           <output>{state.levels[key].toFixed(1)} dB</output>
           <label className={styles.pan}><span>L</span><input disabled={!available} aria-label={`${label} pan`} type="range" min="-1" max="1" step="0.05" value={state.pan[key]} onChange={event=>state.setPan(key,Number(event.target.value))}/><span>R</span></label>
           <span className={styles.colorRule} />
-          <button disabled={!available} className={styles.speaker} onClick={() => state.toggleMute(key)} aria-label={`${state.muted[key] ? "Unmute" : "Mute"} ${label}`}>
+          {/* Shows the mute state, no longer a second way to set it. It and the
+              M button were two controls for one action, and while a stem was
+              unmuted — the default for all four — both announced as "Mute
+              Vocals". The M button carries the state as aria-pressed, so this
+              only has to be the picture of it. */}
+          <span className={styles.speaker} aria-hidden>
             {state.muted[key] ? <SpeakerSlash /> : <SpeakerHigh />}
-          </button>
+          </span>
         </section>
       ))}
       <section className={`${styles.channel} ${styles.master}`}>

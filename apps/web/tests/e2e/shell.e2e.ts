@@ -185,7 +185,8 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
   await expect.poll(()=>page.evaluate(()=>((window as unknown as {__atarangPanners:StereoPannerNode[]}).__atarangPanners[0]?.pan.value))).toBeCloseTo(-.65,2);
   await page.getByRole("button",{name:"Play",exact:true}).click();
   await expect.poll(async()=>Number(await vocalMeter.getAttribute("aria-valuenow"))).toBeGreaterThan(0);
-  await page.getByRole("button",{name:"Mute Vocals",exact:true}).first().click();
+  // No `.first()`: one control per action is the point, so a second match here is a regression.
+  await page.getByRole("button",{name:"Mute Vocals track",exact:true}).click();
   await expect.poll(async()=>Number(await vocalMeter.getAttribute("aria-valuenow"))).toBe(0);
   await page.getByRole("button",{name:"Pause",exact:true}).click();
   await expect(page.getByRole("slider",{name:/Master level/})).toHaveValue("0");
