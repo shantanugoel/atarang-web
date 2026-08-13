@@ -1,0 +1,20 @@
+/* Wraps on content rather than at a breakpoint: the sentence changes length
+   with the situation, so any fixed width for it is wrong somewhere. */
+.notice { z-index: 15; display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 8px; padding: 9px 16px; border-bottom: 1px solid var(--line-strong); background: var(--surface-1); color: var(--text-soft); font-size: 12px; }
+.notice > svg { flex: none; width: 18px; height: 18px; color: var(--accent-soft); }
+.notice p { flex: 1 1 320px; min-width: 0; margin: 0; }
+.notice b { color: var(--text); font-weight: 650; }
+.actions { flex: none; margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.actions button { flex: none; height: 28px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--text-soft); font-size: 12px; }
+.actions button:hover:not(:disabled) { border-color: var(--accent); color: white; }
+.actions button:disabled { opacity: .6; cursor: progress; }
+.primary { display: flex; align-items: center; gap: 6px; border-color: var(--accent); color: white; background: var(--surface-2); }
+.primary svg { width: 14px; height: 14px; }
+.dismiss { width: 28px; padding: 0; display: grid; place-items: center; }
+.dismiss svg { width: 13px; height: 13px; }
+@media (max-width: 760px) {
+  .notice { padding: 8px 10px; }
+  .actions { flex: 1 1 100%; margin-left: 0; }
+  .actions button:not(.dismiss) { flex: 1 1 auto; justify-content: center; }
+  .dismiss { margin-left: auto; }
+}

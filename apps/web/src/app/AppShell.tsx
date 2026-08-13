@@ -2,6 +2,7 @@ import { GearSix, FolderOpen, MusicNotesSimple } from "@phosphor-icons/react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import {useEffect} from "react";
 import {runIntegrityScan} from "../storage/integrity";
+import {StorageNotice} from "./StorageNotice";
 import styles from "./AppShell.module.css";
 
 const navigation = [
@@ -34,6 +35,7 @@ export function AppShell() {
           <NavLink to="/settings" className="icon-button" aria-label="Settings"><GearSix aria-hidden /></NavLink>
         </div>
       </header>
+      <StorageNotice />
       <main className={styles.main}>
         <Outlet />
       </main>

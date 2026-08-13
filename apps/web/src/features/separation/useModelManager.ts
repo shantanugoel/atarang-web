@@ -20,6 +20,18 @@ const updateQualification = (next: Partial<QualificationState>) => {
   qualificationListeners.forEach((listener) => listener());
 };
 
+// A download is a property of the browser, not of whoever asked for it. Kept per
+// hook instance, two mounted copies each believe nothing is running and a second
+// click fetches another 126 MB into the same destination as the first.
+let downloadState: Progress | null = null;
+const downloadListeners = new Set<() => void>();
+const downloadSnapshot = () => downloadState;
+const subscribeDownload = (listener: () => void) => { downloadListeners.add(listener); return () => downloadListeners.delete(listener); };
+const setDownloadProgress = (next: Progress | null) => {
+  downloadState = next;
+  downloadListeners.forEach((listener) => listener());
+};
+
 const platform = () => {
   const chromium = navigator.userAgent.match(/(?:Chrome|Chromium)\/(\d+)/);
   const firefox = navigator.userAgent.match(/Firefox\/(\d+)/);
@@ -31,17 +43,21 @@ const platform = () => {
 export function useModelManager() {
   const [manifest, setManifest] = useState<ModelArtifactManifestV1 | null>(null);
   const [models, setModels] = useState<ModelRecord[]>([]);
-  const [progress, setProgress] = useState<Progress | null>(null);
+  const [evicted, setEvicted] = useState(false);
   const [storedCapability, setStoredCapability] = useState<CapabilityRecord | null>(null);
   const [error, setError] = useState("");
   const workerRef = useRef<{ worker: Worker; requestId: string } | null>(null);
   const qualification = useSyncExternalStore(subscribeQualification, qualificationSnapshot, qualificationSnapshot);
+  const progress = useSyncExternalStore(subscribeDownload, downloadSnapshot, downloadSnapshot);
   const refresh = useCallback(() => void Promise.all([listModels(), listCapabilities()]).then(async ([nextModels, capabilities]) => {
     // The record lives in IndexedDB, the weights live in OPFS, and only the
     // weights are evictable. Believing the record alone reports a model as
     // installed long after the browser reclaimed it.
     const installed = await Promise.all(nextModels.map((model) => opfsPathsExist(Object.values(model.bindings))));
     setModels(nextModels.filter((_, index) => installed[index]));
+    // A record with no weights behind it is the eviction that already happened,
+    // as opposed to the one the persistence notice warns about.
+    setEvicted(installed.some((present) => !present));
     setStoredCapability(capabilities.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null);
   }), []);
   useEffect(() => {
@@ -73,7 +89,8 @@ export function useModelManager() {
   }, []);
 
   const download = useCallback(async () => {
-    if (!manifest) return;
+    // Another mounted copy of this hook may already be downloading.
+    if (!manifest || downloadState) return;
     setError("");
     const estimate = await navigator.storage.estimate();
     const available = (estimate.quota ?? 0) - (estimate.usage ?? 0);
@@ -82,11 +99,11 @@ export function useModelManager() {
     const worker = new Worker(runtimeAssets.inferenceWorker, { type: "module", name: "atarang-model-download" });
     const requestId = uuidV7();
     workerRef.current = { worker, requestId };
-    setProgress({ completedBytes: 0, totalBytes: manifest.totalBytes, piece: 0 });
+    setDownloadProgress({ completedBytes: 0, totalBytes: manifest.totalBytes, piece: 0 });
     await new Promise<void>((resolve, reject) => {
       worker.onmessage = ({ data }) => {
         if (data.requestId !== requestId) return;
-        if (data.type === "model/progress") setProgress({ completedBytes: data.completedBytes, totalBytes: data.totalBytes, piece: data.piece });
+        if (data.type === "model/progress") setDownloadProgress({ completedBytes: data.completedBytes, totalBytes: data.totalBytes, piece: data.piece });
         if (data.type === "model/complete") {
           const now = new Date().toISOString();
           void putModel({ id: manifest.modelArtifactId, schemaVersion: 1, createdAt: manifest.createdAt, updatedAt: now, status: "ready", manifest, bindings: data.bindings }).then(() => { refresh(); resolve(); });
@@ -98,7 +115,7 @@ export function useModelManager() {
     }).catch((reason) => setError(reason instanceof Error ? reason.message : "model_download_failed")).finally(() => {
       worker.terminate();
       workerRef.current = null;
-      setProgress(null);
+      setDownloadProgress(null);
     });
   }, [manifest, refresh]);
 
@@ -161,5 +178,5 @@ export function useModelManager() {
     }
   }, [models]);
 
-  return { manifest, models, progress, qualifying: qualification.qualifying, qualificationProgress: qualification.progress, capability: qualification.capability ?? storedCapability, error: error || qualification.error, importManifest, download, cancel, probe };
+  return { manifest, models, evicted, progress, qualifying: qualification.qualifying, qualificationProgress: qualification.progress, capability: qualification.capability ?? storedCapability, error: error || qualification.error, importManifest, download, cancel, probe };
 }
