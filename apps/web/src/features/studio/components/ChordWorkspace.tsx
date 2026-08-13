@@ -10,6 +10,7 @@ import {
 } from "@phosphor-icons/react";
 import type { UserChartV1,UserChordV1 } from "@atarang/contracts";
 import {
+  chordProIssues,
   exportChordPro,
   parseChordPro,
   transposeChord,
@@ -169,6 +170,7 @@ export function ChordWorkspace({
     setSelectedId = useStudioStore((state) => state.setChartId),
     [pasting, setPasting] = useState(false),
     [paste, setPaste] = useState(""),
+    [issues, setIssues] = useState<string[]>([]),
     input = useRef<HTMLInputElement>(null);
   const chart =
     charts?.find((value) => value.chartId === selectedId) ?? charts?.[0];
@@ -204,15 +206,43 @@ export function ChordWorkspace({
   );
   const addText = (text: string) => {
     if (!originalId) return;
+    // Nothing is saved until the text is worth saving. Adding the chart first
+    // and complaining afterwards is how `{title:` became a lyric line — and,
+    // because a chart replaces the detected timeline, an unfixable one.
+    const found = chordProIssues(text);
+    if (found.length) { setIssues(found); setPaste(text); setPasting(true); return; }
     const value = save(parseChordPro(text, originalId, uuidV7(), songTitle));
     setSelectedId(value.chartId);
     setPasting(false);
     setPaste("");
+    setIssues([]);
   };
   const importFile = async (file?: File) => {
+    // A bad file lands in the same editor as bad pasted text, with the same
+    // errors against it, because repairing it needs the same surface.
     if (file) addText(await file.text());
     if (input.current) input.current.value = "";
   };
+  const pastePanel = pasting && (
+    <section className={styles.paste}>
+      <textarea
+        autoFocus
+        value={paste}
+        onChange={(event) => { setPaste(event.target.value); setIssues([]); }}
+        placeholder={"{title: Song}\n[Am]Lyrics with [F]chords"}
+        aria-label="Paste ChordPro chart"
+        aria-invalid={issues.length > 0}
+      />
+      {issues.length > 0 && (
+        <ul className={styles.issues} role="alert">
+          {issues.map((issue) => <li key={issue}>{issue}</li>)}
+        </ul>
+      )}
+      <button disabled={!paste.trim()} onClick={() => addText(paste)}>
+        Add chart
+      </button>
+    </section>
+  );
   const update = (change: Partial<UserChartV1>) =>
     chart && save({ ...chart, ...change });
   const download = () => {
@@ -292,20 +322,7 @@ export function ChordWorkspace({
             Paste chart
           </button>
         </div>
-        {pasting && (
-          <section className={styles.paste}>
-            <textarea
-              autoFocus
-              value={paste}
-              onChange={(event) => setPaste(event.target.value)}
-              placeholder="{title: Song}\n[Am]Lyrics with [F]chords"
-              aria-label="Paste ChordPro chart"
-            />
-            <button disabled={!paste.trim()} onClick={() => addText(paste)}>
-              Add chart
-            </button>
-          </section>
-        )}
+        {pastePanel}
         <input
           ref={input}
           className="sr-only"
@@ -348,20 +365,7 @@ export function ChordWorkspace({
             Paste chart
           </button>
         </div>
-        {pasting && (
-          <section className={styles.paste}>
-            <textarea
-              autoFocus
-              value={paste}
-              onChange={(event) => setPaste(event.target.value)}
-              placeholder="{title: Song}\n[Am]Lyrics with [F]chords"
-              aria-label="Paste ChordPro chart"
-            />
-            <button disabled={!paste.trim()} onClick={() => addText(paste)}>
-              Add chart
-            </button>
-          </section>
-        )}
+        {pastePanel}
         <input
           ref={input}
           className="sr-only"
@@ -375,6 +379,10 @@ export function ChordWorkspace({
   }
   return (
     <div className={styles.chart} role="tabpanel">
+      {/* This view has an Import button too, so it needs the repair editor a
+          rejected file opens — otherwise importing a bad chart here does
+          nothing at all, visibly. */}
+      {pastePanel}
       <div className={styles.toolbar}>
         <select
           aria-label="Selected chord chart"

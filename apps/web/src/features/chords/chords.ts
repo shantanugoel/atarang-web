@@ -11,4 +11,34 @@ export function transposeChord(value:string,semitones:number,simplify=false){con
 
 function parseSegments(line:string):ChartSegmentV1[]{const segments:ChartSegmentV1[]=[];let cursor=0,chord:string|undefined;for(const match of line.matchAll(/\[([^\]]+)]/g)){const text=line.slice(cursor,match.index);if(text||chord!==undefined){const segment:ChartSegmentV1={text};if(chord!==undefined)segment.chord=chord;segments.push(segment)}chord=match[1]!.trim();cursor=match.index!+match[0].length}const tail=line.slice(cursor);if(tail||chord!==undefined){const segment:ChartSegmentV1={text:tail};if(chord!==undefined)segment.chord=chord;segments.push(segment)}return segments.length?segments:[{text:line}]}
 export function parseChordPro(text:string,originalId:string,chartId:string,fallbackTitle="Untitled chart",now=new Date().toISOString()):UserChartV1{let title=fallbackTitle,artist="",declaredKey:string|undefined,section:string|undefined;const lines:ChartLineV1[]=[];for(const raw of text.replaceAll("\r","").split("\n")){const directive=raw.match(/^\{([^:}]+)(?::\s*([^}]*))?}$/);if(directive){const key=directive[1]!.toLowerCase().replaceAll("_"," "),value=directive[2]?.trim()??"";if(key==="title"||key==="t")title=value;if(key==="artist"||key==="subtitle"||key==="st")artist=value;if(key==="key")declaredKey=value;if(key==="start of chorus"||key==="soc")section=value||"Chorus";if(key==="start of verse"||key==="sov")section=value||"Verse";if(key==="comment"||key==="c")section=value;continue}if(!raw.trim())continue;const line:ChartLineV1={id:`${chartId}:line:${lines.length}`,segments:parseSegments(raw)};if(section){line.section=section;section=undefined}lines.push(line)}const chart:UserChartV1={schema:"atarang.chart/1",chartId,originalId,revision:0,title,artist,transposeSemitones:0,capo:0,simplify:false,lines,updatedAt:now};if(declaredKey)chart.declaredKey=declaredKey;return chart}
+/**
+ * Problems worth stopping an import for, in the user's words, with line numbers.
+ *
+ * Deliberately narrow. `parseChordPro` treats anything it does not recognise as
+ * lyrics, which is the right default for a format with dozens of directives no
+ * one implements — but it means a typo like `{title:` silently becomes a lyric
+ * line reading "{title:", and the user is never told. Only the two shapes that
+ * can *only* be mistakes are rejected: a brace or a bracket that never closes.
+ * Unknown directives and unparseable chord symbols stay legal, because charts
+ * in the wild are full of both and refusing them would be the worse failure.
+ *
+ * "Never closes" means literally that — no `}` on the line at all. Testing the
+ * directive shape instead would reject `{whispered} come back`, a lyric with a
+ * brace annotation, and there is no way past a rejection.
+ */
+export function chordProIssues(text:string):string[]{
+  const issues:string[]=[],lines=text.replaceAll("\r","").split("\n");
+  const clip=(line:string)=>line.length>32?`${line.slice(0,32)}…`:line;
+  lines.forEach((raw,index)=>{
+    const line=raw.trim();
+    if(!line)return;
+    if(line.startsWith("{")&&!line.includes("}"))issues.push(`Line ${index+1}: “${clip(line)}” opens a directive that is never closed. Write it as {title: Song}.`);
+    if(/\[[^\]]*$/.test(raw))issues.push(`Line ${index+1}: a chord bracket is never closed. Write it as [Am].`);
+  });
+  // The parser's own rule for what counts as a directive, so "no content" here
+  // means exactly the lines it would drop rather than anything brace-shaped.
+  if(!lines.some(raw=>raw.trim()&&!/^\{[^:}]+(?::\s*[^}]*)?}$/.test(raw)))issues.push("There are no lyric or chord lines here, only directives.");
+  return issues.slice(0,5);
+}
+
 export function exportChordPro(chart:UserChartV1){const output=[`{title: ${chart.title}}`];if(chart.artist)output.push(`{artist: ${chart.artist}}`);if(chart.declaredKey)output.push(`{key: ${chart.declaredKey}}`);for(const line of chart.lines){if(line.section)output.push(`{comment: ${line.section}}`);output.push(line.segments.map(segment=>`${segment.chord?`[${segment.chord}]`:""}${segment.text}`).join(""))}return`${output.join("\n")}\n`}
