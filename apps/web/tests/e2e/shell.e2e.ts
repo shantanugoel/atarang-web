@@ -4,6 +4,7 @@ import{readFileSync}from"node:fs";
 const browserModelManifest=JSON.parse(readFileSync(new URL("../../../../models/web/manifest.json",import.meta.url),"utf8"));
 
 function silentWav(frames=4_410){const buffer=Buffer.alloc(44+frames*4),view=new DataView(buffer.buffer,buffer.byteOffset,buffer.byteLength),text=(offset:number,value:string)=>buffer.write(value,offset,"ascii");text(0,"RIFF");view.setUint32(4,36+frames*4,true);text(8,"WAVE");text(12,"fmt ");view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,2,true);view.setUint32(24,44_100,true);view.setUint32(28,176_400,true);view.setUint16(32,4,true);view.setUint16(34,16,true);text(36,"data");view.setUint32(40,frames*4,true);return buffer}
+function constantWav(sample:number,frames=44_100){const buffer=silentWav(frames);for(let offset=44;offset<buffer.length;offset+=2)buffer.writeInt16LE(sample,offset);return buffer}
 
 test("production shell is isolated and the bundled demo really plays",async({page,request})=>{const response=await request.get("/");expect(response.ok()).toBeTruthy();expect(response.headers()["cross-origin-opener-policy"]).toBe("same-origin");expect(response.headers()["cross-origin-embedder-policy"]).toBe("require-corp");const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));await page.goto("/studio");await expect(page.getByRole("link",{name:"Atarang Studio home"})).toBeVisible();await expect(page.getByRole("navigation",{name:"Primary navigation"})).toBeVisible();await expect(page.getByText("Backbeat",{exact:true})).toBeVisible();const transport=page.getByRole("region",{name:"Waveform and transport"});const before=Number(await transport.getAttribute("data-source-time-us"));await page.keyboard.press("Space");await expect(page.getByRole("button",{name:"Pause",exact:true})).toHaveAttribute("aria-pressed","true");await expect.poll(async()=>Number(await transport.getAttribute("data-source-time-us")),{timeout:5_000}).toBeGreaterThan(before+250_000);await page.keyboard.press("Space");await expect(page.getByRole("button",{name:"Play",exact:true})).toHaveAttribute("aria-pressed","false");expect(errors).toEqual([])});
 
@@ -261,6 +262,41 @@ test("a recorded take can be removed without a source song",async({page})=>{
   page.once("dialog",dialog=>dialog.accept());
   await page.getByRole("button",{name:"Remove selected (1)"}).click();
   await expect(page.getByText("No performances yet")).toBeVisible();
+});
+
+test("a take can be previewed, compared, remixed, and discarded",async({page,isMobile})=>{
+  const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
+  const performanceId="019fef4f-9c77-7a3f-94ca-ef4214a806f1",micSha="c".repeat(64),backingSha="d".repeat(64),now="2026-08-11T00:00:00.000Z",mic=[...constantWav(10_000)],backing=[...constantWav(0)];
+  await page.goto("/library");
+  await page.getByLabel("Choose audio to import").setInputFiles({name:"take-preview.wav",mimeType:"audio/wav",buffer:silentWav(44_100)});
+  await expect(page).toHaveURL(/\/studio\/[0-9a-f-]+/);
+  const originalId=new URL(page.url()).pathname.split("/").at(-1)!;
+  await page.evaluate(async({performanceId,originalId,micSha,backingSha,now,mic,backing})=>{
+    const root=await navigator.storage.getDirectory(),directory=await root.getDirectoryHandle("qa-takes",{create:true});
+    for(const[sha,bytes]of[[micSha,mic],[backingSha,backing]]as const){const handle=await directory.getFileHandle(`${sha}.wav`,{create:true}),writable=await handle.createWritable();await writable.write(new Uint8Array(bytes));await writable.close()}
+    await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction(["blobs","performances"],"readwrite"),blobs=transaction.objectStore("blobs"),asset=(sha:string,byteLength:number)=>({blobId:`sha256:${sha}`,sha256:sha,byteLength,mediaType:"audio/wav"});for(const[sha,bytes]of[[micSha,mic],[backingSha,backing]]as const)blobs.put({id:`sha256:${sha}`,schemaVersion:1,createdAt:now,updatedAt:now,sha256:sha,byteLength:bytes.length,mediaType:"audio/wav",opfsPath:`/qa-takes/${sha}.wav`,referenceCount:1});const manifest={schema:"atarang.performance/1",performanceId,originalId,revision:0,startedAt:now,endedAt:"2026-08-11T00:00:01.000Z",sampleRate:44_100,channels:2,durationFrames:44_100,mic:asset(micSha,mic.length),backing:asset(backingSha,backing.length),inputOffsetUs:0,deviceSettings:{},edit:{trimStartUs:0,trimEndUs:1_000_000,fadeInUs:0,fadeOutUs:0},updatedAt:now};transaction.objectStore("performances").put({id:performanceId,originalId,revision:0,schemaVersion:1,createdAt:now,updatedAt:now,manifest});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})
+  },{performanceId,originalId,micSha,backingSha,now,mic,backing});
+  await page.reload();
+  if(isMobile)await page.getByRole("button",{name:"Song",exact:true}).click();
+  await page.getByRole("tab",{name:"Takes"}).click();
+  await page.getByRole("button",{name:"Preview take"}).click();
+  const player=page.getByLabel("Take 1 take preview");
+  await expect(player).toBeVisible();
+  const layout=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,articleRight:document.querySelector('[role=tabpanel] article')!.getBoundingClientRect().right-innerWidth,audioRight:document.querySelector('audio[aria-label^="Take 1"]')!.getBoundingClientRect().right-innerWidth}));
+  expect(layout.overflow).toBe(0);expect(layout.articleRight).toBeLessThanOrEqual(0);expect(layout.audioRight).toBeLessThanOrEqual(0);
+  expect(await player.evaluate(async audio=>new DataView(await(await fetch((audio as HTMLAudioElement).src)).arrayBuffer()).getInt16(44,true))).toBe(7_200);
+  await page.getByRole("button",{name:"Reference"}).click();
+  await expect(page.getByLabel("Take 1 reference preview")).toBeVisible();
+  await page.getByLabel("Take 1 mic mix").fill("0.5");
+  await expect(page.getByRole("button",{name:"Preview take"})).toBeVisible();
+  await expect.poll(()=>page.evaluate(async id=>{try{const root=await navigator.storage.getDirectory();await(await(await root.getDirectoryHandle("exports")).getDirectoryHandle(id)).getDirectoryHandle("preview");return false}catch{return true}},performanceId)).toBe(true);
+  expect(await page.evaluate(async id=>new Promise<number>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const get=request.result.transaction("performances").objectStore("performances").get(id);get.onsuccess=()=>resolve(get.result.manifest.edit.micGain);get.onerror=()=>reject(get.error)}}),performanceId)).toBe(.5);
+  await page.getByRole("button",{name:"Preview take"}).click();
+  await expect(page.getByLabel("Take 1 take preview")).toBeVisible();
+  page.once("dialog",dialog=>dialog.accept());
+  await page.getByRole("button",{name:"Discard take 1"}).click();
+  await expect(page.getByText("No takes yet")).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
 test("playback survives leaving the Studio, and says what is playing",async({page})=>{
