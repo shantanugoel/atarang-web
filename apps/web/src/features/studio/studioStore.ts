@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { PracticeStateV1 } from "@atarang/contracts";
+import { stepZoom } from "./waveformView";
 
 export type StemKind = "vocals" | "drums" | "bass" | "other";
 export type StudioTab = "lyrics" | "chords" | "sheet" | "takes";
@@ -22,6 +23,8 @@ export interface StudioState {
   loopEnabled: boolean;
   loopStartUs: number;
   loopEndUs: number;
+  /** Waveform magnification. Lives here so switching tabs or views does not throw the view away. */
+  zoom: number;
   togglePlaying(): void;
   toggleRecording(): void;
   toggleMetronome(): void;
@@ -35,6 +38,7 @@ export interface StudioState {
   setLoopEnd(timeUs: number, durationUs: number): void;
   toggleLoop(): void;
   clearLoop(durationUs: number): void;
+  zoomBy(steps: number): void;
   resetPractice(durationUs: number): void;
   hydratePractice(document: PracticeStateV1, durationUs: number): void;
   adjust(key: "speed" | "pitch" | "repetitions" | "pause" | "countIn", delta: number): void;
@@ -62,6 +66,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   loopEnabled: false,
   loopStartUs: 0,
   loopEndUs: 30_000_000,
+  zoom: 1,
   togglePlaying: () => set((s) => ({ playing: !s.playing })),
   toggleRecording: () => set((s) => ({ recording: !s.recording, playing: s.recording ? s.playing : true })),
   toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
@@ -75,8 +80,9 @@ export const useStudioStore = create<StudioState>((set) => ({
   setLoopEnd: (timeUs, durationUs) => set((state) => { const end = Math.min(durationUs, Math.max(MIN_LOOP_US, Math.round(timeUs))); return { loopStartUs: Math.max(0, Math.min(state.loopStartUs, end - MIN_LOOP_US)), loopEndUs: end, loopEnabled: true }; }),
   toggleLoop: () => set((state) => ({ loopEnabled: !state.loopEnabled })),
   clearLoop: (durationUs) => set({ loopEnabled: false, loopStartUs: 0, loopEndUs: Math.max(MIN_LOOP_US, durationUs) }),
-  resetPractice: (durationUs) => set({ target:"vocals",muted:{...stems},soloed:{...stems},levels:{...defaultLevels},speed:1,pitch:0,repetitions:4,pause:2,countIn:2,metronome:true,loopEnabled:false,loopStartUs:0,loopEndUs:Math.max(MIN_LOOP_US,durationUs) }),
-  hydratePractice: (document, durationUs) => set({ target:document.target,muted:{...stems},soloed:{...stems},levels:{...document.stemGainDb},speed:document.speed,pitch:document.pitchSemitones,repetitions:document.repetitions,pause:document.pauseSeconds,countIn:document.countIn,metronome:document.metronome,loopEnabled:document.loop.enabled,loopStartUs:Math.min(document.loop.startTimeUs,Math.max(0,durationUs-MIN_LOOP_US)),loopEndUs:Math.min(durationUs,Math.max(document.loop.endTimeUs,MIN_LOOP_US)) }),
+  zoomBy: (steps) => set((state) => ({ zoom: stepZoom(state.zoom, steps) })),
+  resetPractice: (durationUs) => set({ zoom:1,target:"vocals",muted:{...stems},soloed:{...stems},levels:{...defaultLevels},speed:1,pitch:0,repetitions:4,pause:2,countIn:2,metronome:true,loopEnabled:false,loopStartUs:0,loopEndUs:Math.max(MIN_LOOP_US,durationUs) }),
+  hydratePractice: (document, durationUs) => set({ zoom:1,target:document.target,muted:{...stems},soloed:{...stems},levels:{...document.stemGainDb},speed:document.speed,pitch:document.pitchSemitones,repetitions:document.repetitions,pause:document.pauseSeconds,countIn:document.countIn,metronome:document.metronome,loopEnabled:document.loop.enabled,loopStartUs:Math.min(document.loop.startTimeUs,Math.max(0,durationUs-MIN_LOOP_US)),loopEndUs:Math.min(durationUs,Math.max(document.loop.endTimeUs,MIN_LOOP_US)) }),
   adjust: (key, delta) => set((s) => {
     const ranges = { speed: [.5, 1, .05], pitch: [-12, 12, 1], repetitions: [1, 999, 1], pause: [0, 10, 1], countIn: [0, 4, 2] } as const;
     const [min, max, step] = ranges[key];
