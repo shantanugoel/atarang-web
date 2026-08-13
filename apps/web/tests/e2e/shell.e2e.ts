@@ -90,21 +90,38 @@ test("a running model test blocks concurrent separation and can be cancelled",as
   await page.getByRole("navigation",{name:"Primary navigation"}).getByRole("link",{name:"Settings"}).click();
   await page.getByRole("button",{name:"Cancel test"}).click();
   await expect(page.getByRole("button",{name:"Test performance (optional)"})).toBeEnabled();
-  await expect(page.getByRole("alert")).toContainText("cancelled");
+  await expect(page.getByRole("alert")).toContainText("Cancelled");
+});
+
+// A machine with no WebGPU adapter is the only local path Safari and Firefox
+// have, so it has to stay open — and say what it costs.
+test("browser separation falls back to the processor when there is no WebGPU adapter",async({page})=>{
+  const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
+  await page.addInitScript(()=>{const NativeWorker=Worker;class SupportWorker{onmessage:((event:MessageEvent)=>void)|null=null;onerror:((event:ErrorEvent)=>void)|null=null;constructor(url:string|URL,options?:WorkerOptions){if(options?.name!=="atarang-local-support-probe")return new NativeWorker(url,options) as unknown as SupportWorker}postMessage(message:{requestId:string}){setTimeout(()=>this.onmessage?.(new MessageEvent("message",{data:{type:"capability/result",requestId:message.requestId,backend:"wasm",reason:"cpu_fallback_available"}})),10)}terminate(){}}Object.defineProperty(globalThis,"Worker",{value:SupportWorker,configurable:true})});
+  await page.route("**/models/htdemucs-web-onnx/manifest.json",route=>route.fulfill({json:browserModelManifest}));
+  await page.goto("/settings");
+  await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
+  await page.getByRole("link",{name:"Library"}).click();
+  await page.getByLabel("Choose audio to import").setInputFiles({name:"cpu-fallback.wav",mimeType:"audio/wav",buffer:silentWav()});
+  await page.getByRole("button",{name:"Separate song"}).click();
+  const dialog=page.getByRole("dialog",{name:"Separate this song"});
+  await expect(dialog.getByRole("button",{name:"Start local"})).toBeEnabled();
+  await expect(dialog.getByText(/runs on the processor/)).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
 test("browser separation stays disabled when the quick WebGPU probe fails",async({page})=>{
   const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
+  await page.addInitScript(()=>{const NativeWorker=Worker;class SupportWorker{onmessage:((event:MessageEvent)=>void)|null=null;onerror:((event:ErrorEvent)=>void)|null=null;constructor(url:string|URL,options?:WorkerOptions){if(options?.name!=="atarang-local-support-probe")return new NativeWorker(url,options) as unknown as SupportWorker}postMessage(){setTimeout(()=>this.onerror?.(new ErrorEvent("error")),10)}terminate(){}}Object.defineProperty(globalThis,"Worker",{value:SupportWorker,configurable:true})});
   await page.route("**/models/htdemucs-web-onnx/manifest.json",route=>route.fulfill({json:browserModelManifest}));
-  await page.addInitScript(()=>{const NativeWorker=Worker;class SupportWorker{onmessage:((event:MessageEvent)=>void)|null=null;onerror:((event:ErrorEvent)=>void)|null=null;constructor(url:string|URL,options?:WorkerOptions){if(options?.name!=="atarang-local-support-probe")return new NativeWorker(url,options) as unknown as SupportWorker}postMessage(message:{requestId:string}){setTimeout(()=>this.onmessage?.(new MessageEvent("message",{data:{type:"capability/result",requestId:message.requestId,backend:"none",status:"unavailable",reason:"webgpu_unavailable"}})),10)}terminate(){}}Object.defineProperty(globalThis,"Worker",{value:SupportWorker,configurable:true})});
   await page.goto("/settings");
   await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"unsupported-webgpu.wav",mimeType:"audio/wav",buffer:silentWav()});
   await page.getByRole("button",{name:"Separate song"}).click();
   const dialog=page.getByRole("dialog",{name:"Separate this song"});
-  await expect(dialog.getByRole("button",{name:"WebGPU unavailable"})).toBeDisabled();
-  await expect(dialog.getByText(/Browser separation needs WebGPU/)).toBeVisible();
+  await expect(dialog.getByRole("button",{name:"Unavailable here"})).toBeDisabled();
+  await expect(dialog.getByText(/could not check WebGPU availability/)).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -119,13 +136,13 @@ test("a stalled storage preflight times out with a persistent explanation",async
   await page.getByRole("button",{name:"Separate song"}).click();
   const dialog=page.getByRole("dialog",{name:"Separate this song"});
   await dialog.getByRole("button",{name:"Start local"}).click();
-  await expect(dialog.getByRole("status")).toContainText("preflight");
+  await expect(dialog.getByRole("status")).toContainText("Checking storage");
   await expect(dialog.getByRole("alert")).toContainText("storage check did not respond",{timeout:15_000});
   await dialog.getByRole("button",{name:"Close separation options"}).click();
   await expect(page.getByRole("alert")).toContainText("storage check did not respond");
 });
 
-test("saved separated songs enable independent stem controls",async({page})=>{
+test("saved separated songs enable independent stem controls",async({page,isMobile})=>{
   const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
   const originalId="019fef4f-9c77-7a3f-94ca-ef4214a806d1",staleOriginalId="019fef4f-9c77-7a3f-94ca-ef4214a806d0",separationId="019fef4f-9c77-7a3f-94ca-ef4214a806d2",sha="a".repeat(64),now="2026-08-11T00:00:00.000Z";
   await page.goto("/");
@@ -133,10 +150,21 @@ test("saved separated songs enable independent stem controls",async({page})=>{
     await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction(["originals","separations"],"readwrite"),original={id:originalId,schemaVersion:1,createdAt:now,updatedAt:now,title:"Separated fixture",artist:"Test",sourceFileName:"fixture.wav",sourceMediaType:"audio/wav",byteLength:44,durationUs:1_000_000,contentSha256:sha,blobId:`sha256:${sha}`},stems=["vocals","drums","bass","other"].map(kind=>({kind,blobId:`sha256:${sha}`,sampleRate:44_100,channels:2,durationFrames:44_100,variants:[{encoding:"pcm-f32le-wav",mediaType:"audio/wav",byteLength:44,sha256:sha}]})),manifest={schema:"atarang.separation/1",separationId,original:{originalId:staleOriginalId,contentSha256:sha,sourceMediaType:"audio/wav",sampleRate:44_100,channels:2,durationFrames:44_100},model:{modelId:"htdemucs-4stem",artifactVersion:"test",artifactSha256:sha,upstream:"facebookresearch/demucs htdemucs",license:"MIT"},pipeline:{implementation:"server-pytorch",implementationVersion:"test",decodeVersion:"test",preprocessVersion:"test",segmentFrames:343_980,overlapFrames:85_995,shifts:1,postprocessVersion:"test"},stems,provenance:{mode:"local",createdAt:now}};transaction.objectStore("originals").put(original);transaction.objectStore("separations").put({id:separationId,originalId:staleOriginalId,schemaVersion:1,createdAt:now,updatedAt:now,manifest,bindings:Object.fromEntries(stems.map(stem=>[stem.kind,stem.blobId]))});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}});
   },{originalId,staleOriginalId,separationId,sha,now});
   expect(await page.evaluate(async()=>new Promise<number>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const get=request.result.transaction("separations").objectStore("separations").getAll();get.onsuccess=()=>resolve(get.result.length);get.onerror=()=>reject(get.error)}}))).toBe(1);
+  // Stems the browser has evicted are not offered, so the fixture has to put a
+  // real file in OPFS and a blob record pointing at it, exactly like an import —
+  // decodable audio at its recorded byte length, or the integrity scan
+  // quarantines it and playback complains into the console.
+  expect(await page.evaluate(async({sha,bytes})=>{
+    const root=await navigator.storage.getDirectory(),directory=await root.getDirectoryHandle("blobs",{create:true}),handle=await directory.getFileHandle(`${sha}.wav`,{create:true});
+    const writable=await handle.createWritable();await writable.write(new Uint8Array(bytes));await writable.close();
+    return new Promise<boolean>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("blobs","readwrite"),now=new Date().toISOString();transaction.objectStore("blobs").put({id:`sha256:${sha}`,schemaVersion:1,createdAt:now,updatedAt:now,sha256:sha,byteLength:bytes.length,mediaType:"audio/wav",opfsPath:`blobs/${sha}.wav`,referenceCount:4});transaction.oncomplete=()=>{db.close();resolve(true)};transaction.onerror=()=>reject(transaction.error)}});
+  },{sha,bytes:[...silentWav()]})).toBe(true);
   await page.goto("/library");
   await page.getByRole("button",{name:"Separated 1"}).click();
   await expect(page.getByText("Separated fixture",{exact:true})).toBeVisible();
   await page.getByRole("link",{name:"Open"}).click();
+  // Below 1024px the three panels live behind a switcher, and the mixer is not the one on screen.
+  if(isMobile)await page.getByRole("button",{name:"Mix",exact:true}).click();
   const vocals=page.getByRole("slider",{name:/Vocals level/});
   await expect(page.getByRole("complementary",{name:"Four stem mixer"})).toBeVisible();
   await expect(vocals).toBeEnabled();

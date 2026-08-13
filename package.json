@@ -1,13 +1,17 @@
 {
   "name": "atarang-web",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "bun run --cwd apps/web dev",
     "build": "bun run --cwd apps/web build",
     "typecheck": "bun run --cwd apps/web typecheck",
     "test": "bun test",
     "test:e2e": "bun run --cwd apps/web test:e2e",
-    "preview": "bun run --cwd apps/web preview"
+    "preview": "bun run --cwd apps/web preview",
+    "test:e2e:separation": "bun run --cwd apps/web test:e2e:separation"
   }
 }

@@ -8,7 +8,8 @@
     "preview": "bun run preview.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:separation": "ATARANG_E2E_SEPARATION=1 playwright test separation.e2e.ts"
   },
   "dependencies": {
     "@atarang/contracts": "workspace:*",
