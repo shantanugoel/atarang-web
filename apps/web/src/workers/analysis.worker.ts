@@ -1,7 +1,7 @@
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from "mediabunny";
 import FFT from "fft.js";
 import { detectBeatGrid } from "../features/analysis/beatDetection";
-import { bassChromaFrame, chordBoundaries, chromaGeometry, detectChords, harmonicChromaFrame, keyName } from "../features/analysis/chordDetection";
+import { TUNING_BINS, accumulateTuning, bassChromaFrame, chordBoundaries, chromaGeometry, detectChords, harmonicChromaFrame, keyName, tuningReference } from "../features/analysis/chordDetection";
 
 interface WaveformRequest { type: "waveform/analyze"; requestId: string; songId: string; generation: number; opfsPath: string }
 /**
@@ -90,6 +90,7 @@ class ChromaStream {
   readonly #window: number[];
   readonly #harmonic: Float32Array;
   readonly #bass: Float32Array;
+  readonly #tuning = new Float64Array(TUNING_BINS);
   #fill: number;
 
   constructor(sampleRate: number) {
@@ -109,12 +110,21 @@ class ChromaStream {
     this.#fill = geometry.size / 2;
   }
 
+  /** What the recording is tuned to and how tonal it is, so far. */
+  get tuning() { return tuningReference(this.#tuning); }
+
   push(harmonic: number, bass: number) {
     this.#harmonic[this.#fill] = harmonic;
     this.#bass[this.#fill] = bass;
     if (++this.#fill < this.#size) return;
-    const profile = this.#profile(this.#harmonic, harmonicChromaFrame);
-    this.frames.push({ harmonic: profile.chroma, bass: this.#profile(this.#bass, bassChromaFrame).chroma, energy: profile.energy });
+    // The estimate is taken from the histogram as it stands and fed straight
+    // back into this frame. It converges within the first seconds and is only
+    // ever 440 before then, which is what the whole song used to use.
+    // ponytail: the opening frames are read at the wrong reference; a
+    // higher-resolution chroma folded to twelve at the end would remove that.
+    const reference = this.tuning.reference;
+    const profile = this.#profile(this.#harmonic, harmonicChromaFrame, reference, true);
+    this.frames.push({ harmonic: profile.chroma, bass: this.#profile(this.#bass, bassChromaFrame, reference).chroma, energy: profile.energy });
     this.#harmonic.copyWithin(0, this.#hop);
     this.#bass.copyWithin(0, this.#hop);
     this.#fill -= this.#hop;
@@ -123,11 +133,13 @@ class ChromaStream {
   /** Pads the tail so the final frames cover the end of the song. */
   finish() { for (let index = 0; index < this.#size / 2; index++) this.push(0, 0); }
 
-  #profile(buffer: Float32Array, extract: (magnitudes: ArrayLike<number>, sampleRate: number, size: number) => { chroma: Float64Array; energy: number }) {
+  /** `tune` only on the harmonic pass: the bass band would count the same low partials twice. */
+  #profile(buffer: Float32Array, extract: (magnitudes: ArrayLike<number>, sampleRate: number, size: number, reference: number) => { chroma: Float64Array; energy: number }, reference: number, tune = false) {
     for (let index = 0; index < this.#size; index++) this.#input[index] = buffer[index]! * this.#window[index]!;
     this.#fft.realTransform(this.#spectrum, this.#input);
     for (let bin = 0; bin <= this.#size / 2; bin++) this.#magnitudes[bin] = Math.hypot(this.#spectrum[bin * 2]!, this.#spectrum[bin * 2 + 1]!);
-    return extract(this.#magnitudes, this.#sampleRate, this.#size);
+    if (tune) accumulateTuning(this.#tuning, this.#magnitudes, this.#sampleRate, this.#size);
+    return extract(this.#magnitudes, this.#sampleRate, this.#size, reference);
   }
 }
 
@@ -176,7 +188,7 @@ async function analyseWaveform(data: WaveformRequest, identity: object) {
   const beatAnalysis = detectBeatGrid(flux, source.sampleRate, HOP_FRAMES, durationFrames);
   const durationUs = Math.round(durationFrames / source.sampleRate * 1_000_000);
   const beatTimesUs = beatAnalysis.beatsFrames.map((frame) => Math.round(frame / source.sampleRate * 1_000_000));
-  const decoded = detectChords(chroma.frames, chroma.hopSeconds, chordBoundaries(beatTimesUs, beatAnalysis.reliable, durationUs));
+  const decoded = detectChords(chroma.frames, chroma.hopSeconds, chordBoundaries(beatTimesUs, beatAnalysis.reliable, durationUs), chroma.tuning.trust);
   const transfer = levels.flatMap((level) => [level.min.buffer, level.max.buffer, level.rms.buffer]);
   self.postMessage({ type: "waveform/complete", ...identity, sampleRate: source.sampleRate, channels: source.channels, durationFrames, levels, beatAnalysis, chordAnalysis: { segments: decoded.segments, key: keyName(decoded.key) } }, { transfer });
 }
@@ -221,7 +233,7 @@ async function analyseStemChords(data: StemChordRequest, identity: object) {
   // The last partial second, so the caller's bar reaches the end rather than
   // stopping short while the Viterbi decode below runs.
   self.postMessage({ type: "chords/progress", ...identity, frames });
-  const decoded = detectChords(chroma.frames, chroma.hopSeconds, data.boundaries);
+  const decoded = detectChords(chroma.frames, chroma.hopSeconds, data.boundaries, chroma.tuning.trust);
   self.postMessage({ type: "chords/complete", ...identity, segments: decoded.segments, key: keyName(decoded.key) });
 }
 

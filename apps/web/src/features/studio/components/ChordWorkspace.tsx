@@ -4,6 +4,7 @@ import {
   Plus,
   Trash,
   UploadSimple,
+  WarningCircle,
 } from "@phosphor-icons/react";
 import type { UserChartV1 } from "@atarang/contracts";
 import {
@@ -11,6 +12,7 @@ import {
   parseChordPro,
   transposeChord,
 } from "../../chords/chords";
+import { UNRELIABLE_CONFIDENCE } from "../../analysis/chordDetection";
 import { bestChordShape } from "../../chords/shapes";
 import { useCharts } from "../../chords/useCharts";
 import { useChordAnalysis } from "../../chords/useChordAnalysis";
@@ -107,6 +109,17 @@ export function AnalysisChordRail({
           {analysis.segments.length === 1 ? "1 chord" : `${analysis.segments.length} chords`}
         </em>
       </header>
+      {/* Printing confident symbols over audio no detector can read is worse
+          than printing nothing, because the player verifies by ear either way
+          and only one of those outcomes admits it. */}
+      {analysis.confidence < UNRELIABLE_CONFIDENCE && (
+        <p className={styles.unreliable}>
+          <WarningCircle aria-hidden />
+          These chords are unreliable for this track — its spectrum is too
+          untuned or too noisy to read harmony from. Use them as a starting
+          point and correct what you hear.
+        </p>
+      )}
       <div className={styles.chordTimeline}>
         {analysis.segments.map((segment, index) => (
           <button

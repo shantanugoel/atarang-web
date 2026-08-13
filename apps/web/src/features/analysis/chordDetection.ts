@@ -143,6 +143,105 @@ export function chordSymbol(state: ChordState | null, key?: MusicalKey | null) {
   return `${names[state.root]}${state.quality.symbol}`;
 }
 
+/** One bin per cent, wrapping at the semitone, because that is what tuning is. */
+export const TUNING_BINS = 100;
+export const CONCERT_PITCH = 440;
+
+/**
+ * Sub-bin peak position, by fitting a parabola through the peak and its
+ * neighbours in the log domain.
+ *
+ * At 5.4 Hz of bin spacing a bin index is worth about 20 cents around A2, which
+ * is wider than the deviation being measured. Without interpolation the
+ * histogram below would be reading its own bin grid rather than the recording.
+ */
+export function parabolicPeak(magnitudes: ArrayLike<number>, bin: number) {
+  const left = Math.log(magnitudes[bin - 1]! + Number.MIN_VALUE);
+  const centre = Math.log(magnitudes[bin]! + Number.MIN_VALUE);
+  const right = Math.log(magnitudes[bin + 1]! + Number.MIN_VALUE);
+  const curvature = left - 2 * centre + right;
+  if (!(curvature < 0)) return bin;
+  return bin + Math.max(-0.5, Math.min(0.5, 0.5 * (left - right) / curvature));
+}
+
+/**
+ * Adds one frame's tonal peaks to a cent-deviation histogram.
+ *
+ * Each peak is scored against the equal-tempered grid and its distance from the
+ * nearest semitone recorded, weighted by how loud it is. A recording at concert
+ * pitch piles up near zero; one tuned down piles up somewhere else; one whose
+ * peaks are not tonal partials at all spreads out evenly, which is the signal
+ * that no amount of correction will make its chords trustworthy.
+ */
+export function accumulateTuning(histogram: Float64Array, magnitudes: ArrayLike<number>, sampleRate: number, size: number) {
+  const lowest = Math.max(1, Math.floor(HARMONIC_BAND[0] * size / sampleRate));
+  const highest = Math.min(size / 2 - 2, Math.ceil(HARMONIC_BAND[1] * size / sampleRate));
+  if (lowest >= highest) return;
+  const floor = localFloor(magnitudes, lowest, highest);
+  for (let bin = lowest; bin <= highest; bin++) {
+    const magnitude = magnitudes[bin]!;
+    if (!(magnitude > magnitudes[bin - 1]! && magnitude >= magnitudes[bin + 1]!)) continue;
+    if (magnitude < PEAK_FLOOR_RATIO * floor[bin - lowest]!) continue;
+    const frequency = parabolicPeak(magnitudes, bin) * sampleRate / size;
+    if (!(frequency > 0)) continue;
+    const semitones = 12 * Math.log2(frequency / CONCERT_PITCH);
+    const cents = Math.round((semitones - Math.round(semitones)) * 100);
+    const slot = (cents % TUNING_BINS + TUNING_BINS) % TUNING_BINS;
+    histogram[slot] = histogram[slot]! + magnitude;
+  }
+}
+
+/**
+ * The histogram's circular mean: where the deviations sit, and how tightly.
+ *
+ * Circular because the deviation wraps — 49 cents sharp and 49 flat are two
+ * cents apart, and a linear mean of those two is a semitone away from both.
+ * `tonality` is the resultant length, which is 1 when every peak agrees and 0
+ * when the deviations are spread evenly around the semitone.
+ */
+export function estimateTuning(histogram: Float64Array) {
+  let x = 0, y = 0, total = 0;
+  for (let cent = 0; cent < TUNING_BINS; cent++) {
+    const weight = histogram[cent]!;
+    const angle = 2 * Math.PI * cent / TUNING_BINS;
+    x += weight * Math.cos(angle);
+    y += weight * Math.sin(angle);
+    total += weight;
+  }
+  if (total <= 0) return { cents: 0, tonality: 0 };
+  return { cents: Math.atan2(y, x) / (2 * Math.PI) * TUNING_BINS, tonality: Math.hypot(x, y) / total };
+}
+
+// How concentrated a recording that is genuinely tonal comes out. Measured end
+// to end through the analysis worker: the bundled CC0 mix reads 0.64, a
+// synthesised progression 1.0, a distorted guitar 0.55, and white noise 0.041.
+// The threshold sits in the gap, far from both ends.
+//
+// Real distorted stems sit lower than the synthetic ones do — the audit measured
+// a strongest bin holding 1.5% of peak energy — so this is the knob to move if
+// tonal material starts being refused.
+const TONAL_REFERENCE = 0.25;
+
+/**
+ * What a document's confidence has to clear before its chords are worth reading.
+ *
+ * Lives next to TONAL_REFERENCE because the two set each other: trust is
+ * tonality over that reference, and confidence is trust times how cleanly the
+ * templates matched. Moving one without the other silently re-labels ordinary
+ * songs as unreadable.
+ */
+export const UNRELIABLE_CONFIDENCE = 0.35;
+
+/** The A the recording is actually tuned to, and 440 when it will not say. */
+export function tuningReference(histogram: Float64Array) {
+  const { cents, tonality } = estimateTuning(histogram);
+  return {
+    reference: tonality >= TONAL_REFERENCE ? CONCERT_PITCH * 2 ** (cents / 1200) : CONCERT_PITCH,
+    /** 0 to 1. Scales the confidence of everything decoded from this spectrum. */
+    trust: Math.min(1, tonality / TONAL_REFERENCE),
+  };
+}
+
 /**
  * One frame of pitch-class energy, with overtone suppression.
  *
@@ -152,7 +251,7 @@ export function chordSymbol(state: ChordState | null, key?: MusicalKey | null) {
  * as its harmonics climbed, which is how a monophonic bass line ends up looking
  * like a dominant seventh.
  */
-function chromaFrame(magnitudes: ArrayLike<number>, sampleRate: number, size: number, band: readonly [number, number], harmonics: number) {
+function chromaFrame(magnitudes: ArrayLike<number>, sampleRate: number, size: number, band: readonly [number, number], harmonics: number, reference: number) {
   const chroma = new Float64Array(12);
   const lowest = Math.max(1, Math.floor(band[0] * size / sampleRate));
   const highest = Math.min(size / 2 - 2, Math.ceil(band[1] * size / sampleRate));
@@ -177,7 +276,7 @@ function chromaFrame(magnitudes: ArrayLike<number>, sampleRate: number, size: nu
     for (let harmonic = 1; harmonic <= Math.max(1, harmonics); harmonic++) {
       const fundamental = frequency / harmonic;
       if (fundamental < band[0]) break;
-      const pitch = Math.round(12 * Math.log2(fundamental / 440) + 69);
+      const pitch = Math.round(12 * Math.log2(fundamental / reference) + 69);
       if (!Number.isFinite(pitch)) break;
       const pitchClass = (pitch % 12 + 12) % 12;
       chroma[pitchClass] = chroma[pitchClass]! + magnitude * weight;
@@ -193,14 +292,14 @@ function chromaFrame(magnitudes: ArrayLike<number>, sampleRate: number, size: nu
   return { chroma, energy: energy / (highest - lowest + 1) };
 }
 
-export function harmonicChromaFrame(magnitudes: ArrayLike<number>, sampleRate: number, size: number) {
-  return chromaFrame(magnitudes, sampleRate, size, HARMONIC_BAND, HARMONIC_COUNT);
+export function harmonicChromaFrame(magnitudes: ArrayLike<number>, sampleRate: number, size: number, reference = CONCERT_PITCH) {
+  return chromaFrame(magnitudes, sampleRate, size, HARMONIC_BAND, HARMONIC_COUNT, reference);
 }
 
 // A bass note's own harmonics land above the band, so folding them back would
 // only add the notes it is not playing.
-export function bassChromaFrame(magnitudes: ArrayLike<number>, sampleRate: number, size: number) {
-  return chromaFrame(magnitudes, sampleRate, size, BASS_BAND, 1);
+export function bassChromaFrame(magnitudes: ArrayLike<number>, sampleRate: number, size: number, reference = CONCERT_PITCH) {
+  return chromaFrame(magnitudes, sampleRate, size, BASS_BAND, 1, reference);
 }
 
 /**
@@ -352,6 +451,10 @@ export function detectChords(
   frames: { harmonic: Float64Array; bass: Float64Array; energy: number }[],
   hopSeconds: number,
   boundaries: readonly number[],
+  // How tonal the spectrum the frames came from was, 0 to 1. Scales every
+  // confidence reported, so a track whose peaks are not tonal partials cannot
+  // print confident chord symbols over material no detector could read.
+  trust = 1,
 ): { segments: ChordSegment[]; key: MusicalKey | null } {
   if (frames.length === 0 || boundaries.length < 2) return { segments: [], key: null };
 
@@ -386,7 +489,7 @@ export function detectChords(
   const segments: ChordSegment[] = [];
   for (let index = 0; index < path.length; index++) {
     const chord = chordSymbol(CHORD_STATES[path[index]!] ?? null, key);
-    const confidence = chordConfidence(path[index]!, scores[index]!);
+    const confidence = chordConfidence(path[index]!, scores[index]!) * trust;
     const previous = segments.at(-1);
     if (previous?.chord === chord && previous.endTimeUs === windows[index]!.start) {
       previous.endTimeUs = windows[index]!.end;
