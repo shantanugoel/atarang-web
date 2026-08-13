@@ -1,21 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { ListBullets, MusicNotes, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
 import { Link, useParams, useSearchParams } from "react-router";
-import type { OriginalRecord } from "../../storage/database";
-import { getOriginal } from "../../storage/repositories";
 import { Mixer } from "./components/Mixer";
 import { PracticeInspector } from "./components/PracticeInspector";
 import { LyricsWorkspace } from "./components/LyricsWorkspace";
 import { Transport } from "./components/Transport";
 import {SeparationSheet} from "./components/SeparationSheet";
-import { useImportedAudio } from "./useImportedAudio";
-import { DEMO_TRACK, useDemoAudio } from "./useDemoAudio";
-import { useSeparatedAudio } from "./useSeparatedAudio";
-import { useWaveform } from "./useWaveform";
-import { usePracticePersistence } from "./usePracticePersistence";
+import { DEMO_TRACK } from "./useDemoAudio";
+import { usePlaybackSession } from "./PlaybackSession";
 import { ensureStemChordAnalysis } from "./waveformAnalysis";
-import {useBeatGrid} from "./useBeatGrid";
-import {useSeparation} from "../separation/useSeparation";
 import {importSeparationPackage,type SeparationImportProgress} from "../separation/separationImporter";
 import { useStudioStore } from "./studioStore";
 import styles from "./StudioPage.module.css";
@@ -23,23 +16,9 @@ import styles from "./StudioPage.module.css";
 export function StudioPage() {
   const { songId } = useParams();
   const [searchParams,setSearchParams]=useSearchParams();
-  const [original, setOriginal] = useState<OriginalRecord | null | undefined>(songId ? undefined : null);
-  const toggleMetronome = useStudioStore((s) => s.toggleMetronome);
-  const toggleRecording = useStudioStore((s) => s.toggleRecording);
-  const setLoopStart = useStudioStore((s) => s.setLoopStart);
-  const setLoopEnd = useStudioStore((s) => s.setLoopEnd);
-  const loopEnabled = useStudioStore((s) => s.loopEnabled);
-  const loopStartUs = useStudioStore((s) => s.loopStartUs);
-  const loopEndUs = useStudioStore((s) => s.loopEndUs);
-  const speed = useStudioStore((s) => s.speed);
-  const masterLevel = useStudioStore((s) => s.masterLevel);
-  const waveform = useWaveform(original ?? undefined);
-  const beats=useBeatGrid(original??undefined);
-  const separation=useSeparation(original??undefined);
-  const importedPlayback = useImportedAudio(separation === null ? original ?? undefined : undefined,speed,10 ** (masterLevel/20));
-  const separatedPlayback = useSeparatedAudio(separation ?? undefined,beats.grid);
-  const demoPlayback = useDemoAudio(speed, original === null,10 ** (masterLevel/20));
-  const playback = original ? (separation ? separatedPlayback : importedPlayback) : demoPlayback;
+  // The song, its analysis and its audio outlive this page — they belong to the
+  // session above the router, so that leaving the Studio does not stop the music.
+  const {original,playback,waveform,waveformStatus,beatGrid,adjustTempo,separation}=usePlaybackSession();
   const separationInput=useRef<HTMLInputElement>(null);
   const[separationProgress,setSeparationProgress]=useState<SeparationImportProgress|null>(null);
   const[separationSheet,setSeparationSheet]=useState(false);
@@ -47,31 +26,11 @@ export function StudioPage() {
   const pane = useStudioStore((s) => s.pane);
   const setPane = useStudioStore((s) => s.setPane);
   const[separationError,setSeparationError]=useState("");
-  const playbackToggle = playback.toggle;
-  const playbackSeekBy = playback.seekBy;
-  usePracticePersistence(original ?? undefined, playback.currentTimeUs, playback.playing, playback.ready, playback.seekTo);
-  useEffect(()=>{if(separation===null&&playback.playing&&loopEnabled&&playback.currentTimeUs>=loopEndUs)playback.seekTo(loopStartUs/1_000_000)},[loopEnabled,loopEndUs,loopStartUs,playback.currentTimeUs,playback.playing,playback.seekTo,separation]);
 
-  useEffect(() => { let active = true; useStudioStore.getState().openSong(songId ?? null); if (!songId) { setOriginal(null); return; } setOriginal(undefined); void getOriginal(songId).then((record) => { if (active) setOriginal(record ?? null); }); return () => { active = false; }; }, [songId]);
   // Chords first decoded from the mixture are re-decoded from the stems, where
   // the drums and the vocal line are no longer voting on the harmony.
   useEffect(()=>{if(!original||!separation)return;let active=true;void ensureStemChordAnalysis(original,separation,fraction=>{if(active)setChordProgress(fraction)}).finally(()=>{if(active)setChordProgress(null)});return()=>{active=false;setChordProgress(null)}},[original,separation]);
   useEffect(()=>{if(original&&searchParams.get("separate")==="1"){setSeparationError("");setSeparationSheet(true);setSearchParams({}, {replace:true})}},[original,searchParams,setSearchParams]);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
-      if (event.code === "Space" || event.key.toLowerCase() === "k") { event.preventDefault(); void playbackToggle(); }
-      if (event.key.toLowerCase() === "j") playbackSeekBy(-10);
-      if (event.key.toLowerCase() === "l") playbackSeekBy(10);
-      if (event.key.toLowerCase() === "i" && original) setLoopStart(playback.currentTimeUs, original.durationUs);
-      if (event.key.toLowerCase() === "o" && original) setLoopEnd(playback.currentTimeUs, original.durationUs);
-      if (event.key.toLowerCase() === "m") toggleMetronome();
-      if (event.key.toLowerCase() === "r") { if(playback.toggleRecording)void playback.toggleRecording();else if(!original)toggleRecording(); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [original, playback.currentTimeUs, playbackSeekBy, playbackToggle, setLoopEnd, setLoopStart, toggleMetronome, toggleRecording]);
 
   if (original === undefined) return <div className={styles.routeState}><SpinnerGap className={styles.spin}/><span>Opening local audio…</span></div>;
   if (songId && !original) return <div className={styles.routeState}><WarningCircle/><strong>Song not found</strong><span>This item may have been removed from browser storage.</span><Link to="/library">Return to Library</Link></div>;
@@ -94,13 +53,13 @@ export function StudioPage() {
       <div className={styles.workspace} data-pane={pane}>
         <Mixer available={Boolean(separation)} />
         <LyricsWorkspace originalId={original?.id} songTitle={original?.title ?? DEMO_TRACK.title} artistName={original?.artist} durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} seekTo={playback.seekTo} />
-        <PracticeInspector durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} stemsAvailable={Boolean(separation)} beatGrid={beats.grid} adjustTempo={beats.adjustTempo} />
+        <PracticeInspector durationUs={original?.durationUs ?? DEMO_TRACK.durationUs} currentTimeUs={playback.currentTimeUs} stemsAvailable={Boolean(separation)} beatGrid={beatGrid} adjustTempo={adjustTempo} />
       </div>
       {(playback.error||playback.recordingError||separationError) && <div className={styles.playbackError} role="alert"><WarningCircle/>{playback.error||playback.recordingError||separationError}</div>}
       {separationProgress&&<div className={styles.separationProgress} role="status"><SpinnerGap className={styles.spin}/>{separationProgress.phase==="preflight"?"Checking four-stem package…":separationProgress.phase==="writing"?"Verifying and storing stems…":"Publishing separation…"}</div>}
       {/* The chords on screen are about to change on their own. Say so, or it reads as a bug. */}
       {chordProgress!==null&&!separationProgress&&<div className={styles.separationProgress} role="status"><SpinnerGap className={styles.spin}/>{`Re-reading chords from the separated stems… ${Math.round(chordProgress*100)}%`}</div>}
-      <Transport importedPlayback={playback} waveform={waveform.waveform} waveformStatus={imported ? waveform.status : "ready"} beatGrid={beats.grid} stemsAvailable={Boolean(separation)} />
+      <Transport importedPlayback={playback} waveform={waveform} waveformStatus={imported ? waveformStatus : "ready"} beatGrid={beatGrid} stemsAvailable={Boolean(separation)} />
       {separationSheet&&original&&<SeparationSheet original={original} replacing={Boolean(separation)} onClose={()=>setSeparationSheet(false)} onImportPackage={()=>{setSeparationSheet(false);separationInput.current?.click()}} onCloudPackage={attachCloudSeparation} onLocalFailure={setSeparationError}/>}
     </div>
   );

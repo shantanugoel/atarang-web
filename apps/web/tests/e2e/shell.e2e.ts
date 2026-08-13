@@ -180,3 +180,21 @@ test("the Library category is in the URL, so Back returns to the list you were r
   await expect(page).toHaveURL(/category=performances/);
   await expect(page.getByText("No performances yet")).toBeVisible();
 });
+
+test("playback survives leaving the Studio, and says what is playing",async({page})=>{
+  await page.goto("/studio");
+  await page.getByRole("button",{name:"Play",exact:true}).click();
+  await expect(page.getByRole("button",{name:"Pause",exact:true})).toHaveAttribute("aria-pressed","true");
+  await page.getByRole("link",{name:"Library"}).click();
+  await expect(page.getByRole("heading",{name:"Library"})).toBeVisible();
+  const bar=page.getByRole("region",{name:"Now playing"});
+  await expect(bar.getByText("Backbeat")).toBeVisible();
+  await expect(bar.getByRole("button",{name:"Pause",exact:true})).toBeVisible();
+  const seek=bar.getByLabel("Seek");
+  const before=Number(await seek.inputValue());
+  await expect.poll(async()=>Number(await seek.inputValue()),{timeout:5_000}).toBeGreaterThan(before);
+  // And the same session is still there on the way back — one player, not two.
+  await page.getByRole("navigation",{name:"Primary navigation"}).getByRole("link",{name:"Studio"}).click();
+  await expect(page.getByRole("button",{name:"Pause",exact:true})).toHaveAttribute("aria-pressed","true");
+  await expect(page.getByRole("region",{name:"Now playing"})).toBeHidden();
+});

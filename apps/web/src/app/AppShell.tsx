@@ -3,6 +3,8 @@ import { NavLink, Outlet, useLocation } from "react-router";
 import {useEffect} from "react";
 import {runIntegrityScan} from "../storage/integrity";
 import {StorageNotice} from "./StorageNotice";
+import {NowPlayingBar} from "./NowPlayingBar";
+import {PlaybackSessionProvider} from "../features/studio/PlaybackSession";
 import styles from "./AppShell.module.css";
 
 const navigation = [
@@ -17,7 +19,7 @@ export function AppShell() {
   const inStudio = pathname.startsWith("/studio");
 
   return (
-    <div className={styles.shell}>
+    <PlaybackSessionProvider><div className={styles.shell}>
       <header className={styles.topbar}>
         <NavLink to="/studio" className={styles.brand} aria-label="Atarang Studio home">
           <MusicNotesSimple weight="fill" aria-hidden />
@@ -39,6 +41,8 @@ export function AppShell() {
       <main className={styles.main}>
         <Outlet />
       </main>
-    </div>
+      {/* In the Studio the transport is this bar with a waveform on top of it. */}
+      {!inStudio && <NowPlayingBar />}
+    </div></PlaybackSessionProvider>
   );
 }
