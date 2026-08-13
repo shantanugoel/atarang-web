@@ -64,10 +64,11 @@ async function scan() {
     }
   }
 
+  // A grid from a superseded detector is valid, not corrupt: it is replaced by
+  // the next analysis pass rather than deleted out from under the song here.
   for (const record of await db.getAll("beats")) {
     try {
       assertBeatGrid(record.document);
-      if (record.document.algorithmVersion !== "atarang-spectral-flux/1") throw new Error("unknown_algorithm");
     } catch {
       await db.delete("beats", record.id);
     }

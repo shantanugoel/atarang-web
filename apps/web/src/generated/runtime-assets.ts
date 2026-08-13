@@ -3,7 +3,7 @@ export const runtimeAssets = {
   "audioWorklet": "/runtime/atarang-processor-gxwz1v8t.js",
   "signalsmithStretch": "/runtime/SignalsmithStretch-csgx382j.js",
   "ioWorker": "/runtime/io.worker-76b0tdb5.js",
-  "analysisWorker": "/runtime/analysis.worker-efmnjttv.js",
+  "analysisWorker": "/runtime/analysis.worker-fgjpfjnd.js",
   "recordingWorker": "/runtime/recording.worker-f885b2y1.js",
   "inferenceWorker": "/runtime/inference.worker-qp1q4xh1.js",
   "serviceWorker": "/runtime/service-worker-65x9zkk5.js"

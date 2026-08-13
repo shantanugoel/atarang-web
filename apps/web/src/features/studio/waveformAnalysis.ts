@@ -1,6 +1,6 @@
 import { runtimeAssets } from "../../generated/runtime-assets";
 import type { OriginalRecord, SeparationRecord, WaveformLevel, WaveformRecord } from "../../storage/database";
-import {CURRENT_CHORD_ALGORITHMS,type BeatGridV1,type ChordAlgorithmV1,type ChordAnalysisV1} from "@atarang/contracts";
+import {CURRENT_BEAT_ALGORITHM,CURRENT_CHORD_ALGORITHMS,type BeatGridV1,type ChordAlgorithmV1,type ChordAnalysisV1} from "@atarang/contracts";
 import { chordBoundaries } from "../analysis/chordDetection";
 import { uuidV7 } from "../../storage/ids";
 import {withSongMutationLease} from "../../storage/mutationLease";
@@ -83,7 +83,11 @@ export async function ensureWaveform(original: OriginalRecord) {
   // Any current chord algorithm counts. Requiring the mixture one exactly would
   // re-run the whole pass on every open of a song whose chords have since been
   // upgraded to the stem decode, and then overwrite that better answer.
-  if (existing?.algorithmVersion === ALGORITHM_VERSION&&beats?.document.algorithmVersion==="atarang-spectral-flux/1"&&CURRENT_CHORD_ALGORITHMS.includes(chords?.document.algorithmVersion as ChordAlgorithmV1)) return existing;
+  // A grid the user corrected counts as current whatever detector produced it:
+  // the analysis below refuses to overwrite it, so asking for it again would
+  // re-run the whole pass on every open and never settle.
+  const beatsCurrent=beats?.document.algorithmVersion===CURRENT_BEAT_ALGORITHM||beats?.document.userEdited;
+  if (existing?.algorithmVersion === ALGORITHM_VERSION&&beatsCurrent&&CURRENT_CHORD_ALGORITHMS.includes(chords?.document.algorithmVersion as ChordAlgorithmV1)) return existing;
   const running = active.get(original.id); if (running) return running;
   const promise = withSongMutationLease(original.id,()=>analyze(original)).finally(() => active.delete(original.id));
   active.set(original.id, promise); return promise;
@@ -97,7 +101,7 @@ async function analyze(original: OriginalRecord) {
   );
   const now = new Date().toISOString();
   const {beatAnalysis,chordAnalysis,...waveformResult}=result,record: WaveformRecord = { id:original.id, originalId:original.id, schemaVersion:1, createdAt:now, updatedAt:now, algorithmVersion:ALGORITHM_VERSION, ...waveformResult };
-  const document:BeatGridV1={schema:"atarang.beats/1",originalId:original.id,revision:0,algorithmVersion:"atarang-spectral-flux/1",bpm:beatAnalysis.bpm,reliability:beatAnalysis.reliability,reliable:beatAnalysis.reliable,userEdited:false,beats:beatAnalysis.beatsFrames.map((frame,index)=>{const beatInBar=(((index-beatAnalysis.downbeatPhase)%4+4)%4+1) as 1|2|3|4;return{timeUs:Math.round(frame/result.sampleRate*1_000_000),beatInBar,downbeat:beatInBar===1}}),updatedAt:now};
+  const document:BeatGridV1={schema:"atarang.beats/1",originalId:original.id,revision:0,algorithmVersion:CURRENT_BEAT_ALGORITHM,bpm:beatAnalysis.bpm,reliability:beatAnalysis.reliability,reliable:beatAnalysis.reliable,userEdited:false,beats:beatAnalysis.beatsFrames.map((frame,index)=>{const beatInBar=(((index-beatAnalysis.downbeatPhase)%4+4)%4+1) as 1|2|3|4;return{timeUs:Math.round(frame/result.sampleRate*1_000_000),beatInBar,downbeat:beatInBar===1}}),updatedAt:now};
   const existingBeat=await getBeatGrid(original.id);
   const writes:Promise<unknown>[]=[putWaveform(record),putChordAnalysis({id:original.id,originalId:original.id,schemaVersion:1,createdAt:now,updatedAt:now,document:chordDocumentFrom(original.id,"atarang-chroma/3",chordAnalysis,now)})];
   if(!existingBeat?.document.userEdited)writes.push(putBeatGrid({id:original.id,originalId:original.id,schemaVersion:1,createdAt:now,updatedAt:now,document}));
