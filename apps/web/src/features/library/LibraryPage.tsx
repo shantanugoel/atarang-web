@@ -44,7 +44,7 @@ export function LibraryPage() {
   const cloud = getCloudConfiguration();
   const importing = progress !== null || youtubeProgress !== null;
 
-  useEffect(()=>{setSelected(new Set());setPreviewId(undefined)},[category]);
+  useEffect(()=>{setQuery("");setSelected(new Set());setPreviewId(undefined)},[category]);
   useEffect(()=>setSelected(new Set()),[query]);
 
   useEffect(() => {
