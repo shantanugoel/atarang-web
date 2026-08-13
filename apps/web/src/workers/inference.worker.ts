@@ -13,7 +13,7 @@ import {
   type DemucsBackend,
   type StereoStem,
 } from "../features/separation/demucsDsp";
-import { ortWasmUrl } from "../generated/ort-assets";
+import { ortMjsUrl, ortWasmUrl } from "../generated/ort-assets";
 import { IncrementalSha256 } from "../storage/sha256";
 
 type SyncHandle = {
@@ -172,15 +172,19 @@ async function webgpuAdapter() {
 
 async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal) {
   const backend: DemucsBackend = (await webgpuAdapter()) ? "webgpu" : "wasm";
-  ort.env.wasm.proxy = false;
-  // Single-threaded on both backends. The threaded pool never finishes starting
-  // inside a module worker: measured here, numThreads > 1 leaves the first
-  // InferenceSession.create pending past the 90s watchdog on the CPU path,
-  // while numThreads = 1 completes the same graph at RTF 2.44.
-  // ponytail: a multi-threaded CPU path would be several times faster; it needs
-  // ORT's proxy worker rather than more threads in this one.
-  ort.env.wasm.numThreads = 1;
-  ort.env.wasm.wasmPaths = { wasm: new URL(ortWasmUrl, self.location.origin).href };
+  // Not ORT's proxy worker — that is gated on `document` and does nothing from
+  // in here. Pointing `mjs` at the staged glue is what unblocks threading:
+  // left to the copy inlined in this bundle, Emscripten hands each pthread this
+  // worker's own URL to load, so the pool never finishes starting and the first
+  // InferenceSession.create hangs past the 90s watchdog. Loaded from its own
+  // URL the glue resolves itself and the threads come up.
+  ort.env.wasm.wasmPaths = { wasm: new URL(ortWasmUrl, self.location.origin).href, mjs: new URL(ortMjsUrl, self.location.origin).href };
+  // WebGPU does its work on the GPU and stays on one thread. The CPU path is the
+  // only local option on Safari, on Firefox and on machines without an adapter,
+  // so it takes what is left after two cores are reserved for the browser.
+  // Measured on ten cores: RTF 2.47 at one thread, 0.85 at four, 0.63 at eight.
+  // The cap is there because the gain flattens while the contention does not.
+  ort.env.wasm.numThreads = backend === "wasm" ? Math.min(8, Math.max(1, (navigator.hardwareConcurrency ?? 4) - 2)) : 1;
   ort.env.webgpu.powerPreference = "high-performance";
   const sessions: ort.InferenceSession[] = [];
   const reportLoading = (completed: number) => {

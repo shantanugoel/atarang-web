@@ -1,6 +1,9 @@
 import { extname, join, normalize } from "node:path";
 
-const mime: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".webmanifest": "application/manifest+json", ".map": "application/json", ".mp3": "audio/mpeg", ".flac": "audio/flac", ".wav": "audio/wav", ".wasm": "application/wasm", ".onnx": "application/octet-stream" };
+// .mjs is the ONNX Runtime Emscripten glue. Browsers refuse a module script on
+// a non-JavaScript content type, and local inference imports it dynamically, so
+// guessing is not good enough here.
+const mime: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".webmanifest": "application/manifest+json", ".map": "application/json", ".mp3": "audio/mpeg", ".flac": "audio/flac", ".wav": "audio/wav", ".wasm": "application/wasm", ".onnx": "application/octet-stream" };
 
 // Stems need SharedArrayBuffer, which needs cross-origin isolation. Without
 // these two headers `crossOriginIsolated` is false and separation, four-stem
