@@ -2,6 +2,8 @@ import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from "mediabunny";
 import FFT from "fft.js";
 import { detectBeatGrid } from "../features/analysis/beatDetection";
 import { TUNING_BINS, accumulateTuning, bassChromaFrame, chordBoundaries, chromaGeometry, detectChords, harmonicChromaFrame, keyName, tuningReference } from "../features/analysis/chordDetection";
+import { CQT_BINS, CQT_HARMONICS, amplitudeToDb, cqtBands, cqtFrame, type CqtBand } from "../features/analysis/cqt";
+import { LEARNED_HOP_DIVISOR, learnedChroma } from "../features/analysis/chordModel";
 
 interface WaveformRequest { type: "waveform/analyze"; requestId: string; songId: string; generation: number; opfsPath: string }
 /**
@@ -93,6 +95,11 @@ class ChromaStream {
   readonly #tuning = new Float64Array(TUNING_BINS);
   #fill: number;
 
+  /** The chord model's input, one frame per two chroma frames — its hop is twice ours. */
+  readonly cqt: Float32Array[] = [];
+  readonly #bands: CqtBand[][];
+  #frameIndex = 0;
+
   constructor(sampleRate: number) {
     const geometry = chromaGeometry(sampleRate);
     this.#sampleRate = sampleRate;
@@ -106,6 +113,7 @@ class ChromaStream {
     this.#window = Array.from({ length: geometry.size }, (_, index) => 0.5 - 0.5 * Math.cos(2 * Math.PI * index / (geometry.size - 1)));
     this.#harmonic = new Float32Array(geometry.size);
     this.#bass = new Float32Array(geometry.size);
+    this.#bands = CQT_HARMONICS.map((harmonic) => cqtBands(sampleRate, geometry.size, harmonic));
     // Half a window of leading silence is what centres the first frame.
     this.#fill = geometry.size / 2;
   }
@@ -124,6 +132,16 @@ class ChromaStream {
     // higher-resolution chroma folded to twelve at the end would remove that.
     const reference = this.tuning.reference;
     const profile = this.#profile(this.#harmonic, harmonicChromaFrame, reference, true);
+    // #profile leaves the harmonic magnitudes behind, so the model's input is a
+    // fold of a spectrum that has already been paid for.
+    if (this.#frameIndex++ % 2 === 0) {
+      const frame = new Float32Array(CQT_BINS * CQT_HARMONICS.length);
+      for (let channel = 0; channel < this.#bands.length; channel++) {
+        const bins = cqtFrame(this.#magnitudes, this.#bands[channel]!);
+        for (let bin = 0; bin < CQT_BINS; bin++) frame[bin * CQT_HARMONICS.length + channel] = bins[bin]!;
+      }
+      this.cqt.push(frame);
+    }
     this.frames.push({ harmonic: profile.chroma, bass: this.#profile(this.#bass, bassChromaFrame, reference).chroma, energy: profile.energy });
     this.#harmonic.copyWithin(0, this.#hop);
     this.#bass.copyWithin(0, this.#hop);
@@ -188,9 +206,16 @@ async function analyseWaveform(data: WaveformRequest, identity: object) {
   const beatAnalysis = detectBeatGrid(flux, source.sampleRate, HOP_FRAMES, durationFrames);
   const durationUs = Math.round(durationFrames / source.sampleRate * 1_000_000);
   const beatTimesUs = beatAnalysis.beatsFrames.map((frame) => Math.round(frame / source.sampleRate * 1_000_000));
-  const decoded = detectChords(chroma.frames, chroma.hopSeconds, chordBoundaries(beatTimesUs, beatAnalysis.reliable, durationUs), chroma.tuning.trust);
+  const boundaries = chordBoundaries(beatTimesUs, beatAnalysis.reliable, durationUs);
+  // The model reads pitch classes off the audio, so the tuning histogram no
+  // longer speaks for the front end — the model's own activations say whether
+  // this is harmony at all, and scale every confidence the same way.
+  const learned = await learnedChroma(chroma.cqt, chroma.frames.filter((_, index) => index % LEARNED_HOP_DIVISOR === 0).map((frame) => frame.energy));
+  const decoded = learned
+    ? detectChords(learned.frames, chroma.hopSeconds * LEARNED_HOP_DIVISOR, boundaries, learned.trust)
+    : detectChords(chroma.frames, chroma.hopSeconds, boundaries, chroma.tuning.trust);
   const transfer = levels.flatMap((level) => [level.min.buffer, level.max.buffer, level.rms.buffer]);
-  self.postMessage({ type: "waveform/complete", ...identity, sampleRate: source.sampleRate, channels: source.channels, durationFrames, levels, beatAnalysis, chordAnalysis: { segments: decoded.segments, key: keyName(decoded.key) } }, { transfer });
+  self.postMessage({ type: "waveform/complete", ...identity, sampleRate: source.sampleRate, channels: source.channels, durationFrames, levels, beatAnalysis, chordAnalysis: { segments: decoded.segments, key: keyName(decoded.key), algorithm: learned ? "atarang-crema/1" : "atarang-chroma/3" } }, { transfer });
 }
 
 async function analyseStemChords(data: StemChordRequest, identity: object) {

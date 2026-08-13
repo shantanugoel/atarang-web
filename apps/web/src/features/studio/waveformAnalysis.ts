@@ -46,7 +46,10 @@ function runAnalysisWorker<T>(message: object, completeType: string, errorType: 
  */
 export async function ensureStemChordAnalysis(original: OriginalRecord, separation: SeparationRecord, onProgress?: (fraction: number) => void) {
   const existing = await getChordAnalysis(original.id);
-  if (existing?.document.algorithmVersion === "atarang-chroma/3-stems") return;
+  // The stems pass exists to get the drums and the vocal line out of the way of
+  // template chroma. A learned decode of the mixture does not need that, and is
+  // the better answer, so it is not replaced by one.
+  if (existing?.document.algorithmVersion === "atarang-chroma/3-stems" || existing?.document.algorithmVersion === "atarang-crema/1") return;
   if (onProgress) stemChordProgress.set(original.id, onProgress); else stemChordProgress.delete(original.id);
   const running = activeStemChords.get(original.id);
   if (running) return running;
@@ -95,7 +98,7 @@ export async function ensureWaveform(original: OriginalRecord) {
 
 async function analyze(original: OriginalRecord) {
   const blob = await getBlob(original.blobId); if (!blob) throw new Error("result_integrity_failed");
-  const result = await runAnalysisWorker<{ sampleRate:number; channels:number; durationFrames:number; levels:WaveformLevel[];beatAnalysis:{bpm:number;reliability:number;reliable:boolean;beatsFrames:number[];downbeatPhase:number};chordAnalysis:{segments:ChordAnalysisV1["segments"];key:string|null} }>(
+  const result = await runAnalysisWorker<{ sampleRate:number; channels:number; durationFrames:number; levels:WaveformLevel[];beatAnalysis:{bpm:number;reliability:number;reliable:boolean;beatsFrames:number[];downbeatPhase:number};chordAnalysis:{segments:ChordAnalysisV1["segments"];key:string|null;algorithm:ChordAlgorithmV1} }>(
     { type:"waveform/analyze", songId:original.id, generation:1, opfsPath:blob.opfsPath },
     "waveform/complete", "waveform/error",
   );
@@ -103,7 +106,7 @@ async function analyze(original: OriginalRecord) {
   const {beatAnalysis,chordAnalysis,...waveformResult}=result,record: WaveformRecord = { id:original.id, originalId:original.id, schemaVersion:1, createdAt:now, updatedAt:now, algorithmVersion:ALGORITHM_VERSION, ...waveformResult };
   const document:BeatGridV1={schema:"atarang.beats/1",originalId:original.id,revision:0,algorithmVersion:CURRENT_BEAT_ALGORITHM,bpm:beatAnalysis.bpm,reliability:beatAnalysis.reliability,reliable:beatAnalysis.reliable,userEdited:false,beats:beatAnalysis.beatsFrames.map((frame,index)=>{const beatInBar=(((index-beatAnalysis.downbeatPhase)%4+4)%4+1) as 1|2|3|4;return{timeUs:Math.round(frame/result.sampleRate*1_000_000),beatInBar,downbeat:beatInBar===1}}),updatedAt:now};
   const existingBeat=await getBeatGrid(original.id);
-  const writes:Promise<unknown>[]=[putWaveform(record),putChordAnalysis({id:original.id,originalId:original.id,schemaVersion:1,createdAt:now,updatedAt:now,document:chordDocumentFrom(original.id,"atarang-chroma/3",chordAnalysis,now)})];
+  const writes:Promise<unknown>[]=[putWaveform(record),putChordAnalysis({id:original.id,originalId:original.id,schemaVersion:1,createdAt:now,updatedAt:now,document:chordDocumentFrom(original.id,chordAnalysis.algorithm,chordAnalysis,now)})];
   if(!existingBeat?.document.userEdited)writes.push(putBeatGrid({id:original.id,originalId:original.id,schemaVersion:1,createdAt:now,updatedAt:now,document}));
   await Promise.all(writes);
   return record;

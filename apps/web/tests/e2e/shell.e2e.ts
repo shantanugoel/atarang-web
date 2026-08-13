@@ -81,6 +81,7 @@ test("a running model test blocks concurrent separation and can be cancelled",as
   await expect(page.getByText(/Running optional performance test/)).toBeVisible();
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"busy-model.wav",mimeType:"audio/wav",buffer:silentWav()});
+  await expect(page.getByRole("slider",{name:"Song waveform. Click or drag to seek"})).toBeVisible();
   await page.getByRole("button",{name:"Separate song"}).click();
   const dialog=page.getByRole("dialog",{name:"Separate this song"});
   await expect(dialog.getByRole("button",{name:"Start local"})).toBeEnabled();
@@ -132,11 +133,16 @@ test("a stalled storage preflight times out with a persistent explanation",async
   await page.evaluate(async(manifest)=>{await new Promise<void>((resolve,reject)=>{const request=indexedDB.open("atarang",10);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,transaction=db.transaction("models","readwrite");transaction.objectStore("models").put({id:manifest.modelArtifactId,schemaVersion:1,createdAt:manifest.createdAt,updatedAt:new Date().toISOString(),status:"ready",manifest,bindings:{}});transaction.oncomplete=()=>{db.close();resolve()};transaction.onerror=()=>reject(transaction.error)}})},browserModelManifest);
   await page.getByRole("link",{name:"Library"}).click();
   await page.getByLabel("Choose audio to import").setInputFiles({name:"stalled-preflight.wav",mimeType:"audio/wav",buffer:silentWav()});
+  // The analysis pass holds this song's mutation lease while it runs, which is
+  // what a user waits out by looking at the waveform appear.
+  await expect(page.getByRole("slider",{name:"Song waveform. Click or drag to seek"})).toBeVisible();
   await page.evaluate(()=>Object.defineProperty(navigator.storage,"estimate",{value:()=>new Promise(()=>{}),configurable:true}));
   await page.getByRole("button",{name:"Separate song"}).click();
   const dialog=page.getByRole("dialog",{name:"Separate this song"});
   await dialog.getByRole("button",{name:"Start local"}).click();
-  await expect(dialog.getByRole("status")).toContainText("Checking storage");
+  // Either the preflight is still running or it has already given up; racing the
+  // ten-second timeout for the intermediate state is not what this test is about.
+  await expect.poll(async()=>await dialog.getByRole("status").isVisible()||await dialog.getByRole("alert").isVisible()).toBe(true);
   await expect(dialog.getByRole("alert")).toContainText("storage check did not respond",{timeout:15_000});
   await dialog.getByRole("button",{name:"Close separation options"}).click();
   await expect(page.getByRole("alert")).toContainText("storage check did not respond");

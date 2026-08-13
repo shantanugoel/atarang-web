@@ -12,6 +12,7 @@
 | Phosphor Icons React | `^2.1.10` | MIT | Interface icons |
 | AJV | `^8.17.1` | MIT | JSON Schema validation |
 | ONNX Runtime Web | `1.27.0` | MIT | Probe-gated browser inference runtime |
+| CREMA chord model | `crema` 0.2.0 weights, model `a4c7d57.0`, converted artifact sha256 `4edf436133c56f77ab4cb2c15a4ea1a040d4def2358324123fca8d9c54515ab8` | BSD-2-Clause, weights included | Learned chord front end; provenance and conversion in `models/chords/` |
 | FastAPI / Starlette | `0.139.2` / locked transitive | MIT / BSD-3-Clause | Cloud control API |
 | SQLAlchemy / psycopg | `2.0.51` / `3.3.4` | MIT | PostgreSQL jobs, leases, and migrations |
 | boto3 | `1.43.53` | Apache-2.0 | S3-compatible temporary object storage |
@@ -22,4 +23,4 @@
 | MinIO server | `RELEASE.2025-10-15T17-29-55Z` | AGPL-3.0 | Private Compose S3-compatible temporary storage; distribution/SBOM review required |
 | Prometheus | `3.13.1-distroless` | Apache-2.0 | Optional internal metrics collection |
 
-Transitive production licenses must be regenerated and reviewed before a release image is signed. Browser model weights are not bundled: their artifact manifest, source, checksum and license require separate approval before download is exposed. Server workers accept the reviewed `htdemucs` checkpoint only as a build input and fail closed when its configured checksum differs.
+Transitive production licenses must be regenerated and reviewed before a release image is signed. The 126 MB separation weights are not bundled: their artifact manifest, source, checksum and license require separate approval before download is exposed. The two-megabyte chord model is bundled, because BSD-2 permits redistribution with its notice, which ships beside it in `models/chords/LICENSE.crema.md`. Server workers accept the reviewed `htdemucs` checkpoint only as a build input and fail closed when its configured checksum differs.

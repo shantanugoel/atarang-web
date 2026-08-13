@@ -43,11 +43,12 @@ export const CURRENT_BEAT_ALGORITHM:BeatAlgorithmV1="atarang-beat-dp/1";
 export interface BeatGridV1 {schema:"atarang.beats/1";originalId:string;revision:number;algorithmVersion:BeatAlgorithmV1;bpm:number;reliability:number;reliable:boolean;userEdited:boolean;beats:BeatV1[];updatedAt:string}
 export interface ChordSegmentV1{startTimeUs:number;endTimeUs:number;chord:string;confidence:number}
 /** Which evidence the chords were decoded from. Stems exclude vocals and drums. */
-export type ChordAlgorithmV1="atarang-chroma/2"|"atarang-chroma/2-stems"|"atarang-chroma/3"|"atarang-chroma/3-stems";
-export const CHORD_ALGORITHMS:readonly ChordAlgorithmV1[]=["atarang-chroma/2","atarang-chroma/2-stems","atarang-chroma/3","atarang-chroma/3-stems"];
+export type ChordAlgorithmV1="atarang-chroma/2"|"atarang-chroma/2-stems"|"atarang-chroma/3"|"atarang-chroma/3-stems"|"atarang-crema/1";
+export const CHORD_ALGORITHMS:readonly ChordAlgorithmV1[]=["atarang-chroma/2","atarang-chroma/2-stems","atarang-chroma/3","atarang-chroma/3-stems","atarang-crema/1"];
 // What a fresh analysis writes. Anything older is readable but is recomputed on
 // open, which is how a tuning fix reaches a library that already exists.
-export const CURRENT_CHORD_ALGORITHMS:readonly ChordAlgorithmV1[]=["atarang-chroma/3","atarang-chroma/3-stems"];
+/** The learned front end supersedes the stem re-decode: it reads the mixture without needing the drums and the vocal out of the way. */
+export const CURRENT_CHORD_ALGORITHMS:readonly ChordAlgorithmV1[]=["atarang-chroma/3","atarang-chroma/3-stems","atarang-crema/1"];
 export interface ChordAnalysisV1{schema:"atarang.chords/1";originalId:string;revision:number;algorithmVersion:ChordAlgorithmV1;key:string|null;confidence:number;segments:ChordSegmentV1[];updatedAt:string}
 export interface CorrectionLayerV1{schema:"atarang.corrections/1";originalId:string;analysisKind:"beats"|"chords"|"lyrics";generatedRevision:number;revision:number;operations:Record<string,unknown>[];updatedAt:string}
 export interface PerformanceAssetV1 {blobId:string;sha256:string;byteLength:number;mediaType:"audio/wav"}
