@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "atarang-web",
+  "compatibility_date": "2025-06-01",
+  // No "main": there is no Worker script. Static asset requests are free and
+  // unmetered, while anything that invokes a Worker is billed and answers 429
+  // once the free tier runs out — which for this app would mean the model
+  // weights failing to download. dist/_headers carries the cross-origin
+  // isolation and CSP headers that a Worker would otherwise have to add.
+  // SPA handling answers every unmatched path with index.html and a 200, so
+  // unlike server.ts a missing asset does not 404 — a broken deploy surfaces as
+  // a parse error instead. Accepted deliberately: the alternative is a route
+  // list here duplicating router.tsx, and a list that drifts breaks real deep
+  // links, which is worse than a confusing error on a deploy that is already
+  // broken. The fetches that would be misled check their content type first.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

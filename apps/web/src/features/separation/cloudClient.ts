@@ -4,13 +4,24 @@ import {fileForOpfsPath} from "../../storage/opfs";
 import {getBlob} from "../../storage/repositories";
 import {uuidV7} from "../../storage/ids";
 import {IncrementalSha256} from "../../storage/sha256";
+import {detectedCloudOrigin} from "./cloudAvailability";
 
 export interface CloudConfiguration{origin:string;deploymentKey:string}
 export interface CloudProgress{stage:string;progress:number;uploadedBytes:number;totalBytes:number}
 interface ErrorEnvelope{error?:{code?:string}}
 
 const CONFIG_KEY="atarang.cloud.configuration";
-export function getCloudConfiguration():CloudConfiguration|null{try{const value=JSON.parse(sessionStorage.getItem(CONFIG_KEY)??"null") as Partial<CloudConfiguration>|null;if(!value?.origin||!value.deploymentKey)return null;return{origin:new URL(value.origin).origin,deploymentKey:value.deploymentKey}}catch{return null}}
+// An origin entered in Settings always wins; otherwise the one detection found
+// is used, so a deployment whose own origin serves the API needs no setup at
+// all. The deployment key is a secret and stays session-only either way.
+export function getCloudConfiguration():CloudConfiguration|null{
+  let session:Partial<CloudConfiguration>|null=null;
+  try{session=JSON.parse(sessionStorage.getItem(CONFIG_KEY)??"null") as Partial<CloudConfiguration>|null}catch{session=null}
+  const origin=session?.origin||detectedCloudOrigin();
+  const deploymentKey=session?.deploymentKey??"";
+  if(!origin||!deploymentKey)return null;
+  try{return{origin:new URL(origin).origin,deploymentKey}}catch{return null}
+}
 export function setCloudConfiguration(value:CloudConfiguration|null){if(value)sessionStorage.setItem(CONFIG_KEY,JSON.stringify({origin:new URL(value.origin).origin,deploymentKey:value.deploymentKey}));else sessionStorage.removeItem(CONFIG_KEY)}
 
 async function checked(response:Response){if(response.ok)return response;let code=response.status===401?"invalid_deployment_key":`http_${response.status}`;try{const body=await response.json() as ErrorEnvelope;code=response.status===401?"invalid_deployment_key":body.error?.code??code}catch{/* stable fallback */}throw new Error(code)}

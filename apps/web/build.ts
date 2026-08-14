@@ -1,5 +1,6 @@
 import { mkdir, rename, rm } from "node:fs/promises";
 import { basename, extname } from "node:path";
+import { DEFAULT_BACKEND_ORIGIN } from "./src/features/separation/cloudAvailability";
 
 const outdir = "dist";
 const sourceMapDir = "private-sourcemaps";
@@ -90,6 +91,51 @@ if (!builtHtml) throw new Error("Application build did not emit HTML");
 const html = (await Bun.file(builtHtml.path).text()).replaceAll('href="./', 'href="/assets/').replaceAll('src="./', 'src="/assets/');
 await Bun.write(`${outdir}/index.html`, html);
 await Bun.write(`${outdir}/manifest.webmanifest`, Bun.file("public/manifest.webmanifest"));
+
+// The headers a static host must send, in the format Cloudflare Workers, Pages
+// and Netlify all read. Without cross-origin isolation `crossOriginIsolated` is
+// false and separation, four-stem playback, metronome, count-in and recording
+// all refuse to start, so a static deployment that forgets these looks broken
+// rather than unconfigured. Compose sends the same set from its Caddyfile.
+//
+// connect-src is written from the same constant the app probes, so the policy
+// and the code can never disagree about which backend is allowed.
+//
+// Cache-Control is set only where the filename carries a content hash, matching
+// the Caddyfile's immutable rule exactly. /models/ is deliberately not on that
+// list: the weights and their manifest live at fixed paths, so marking them
+// immutable would pin every returning browser to one model version for a year.
+// One header named by two matching rules is combined rather than replaced, so
+// the prefixes must not overlap.
+const csp = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  `connect-src 'self' https://lrclib.net${DEFAULT_BACKEND_ORIGIN ? ` ${DEFAULT_BACKEND_ORIGIN}` : ""}`,
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+await Bun.write(`${outdir}/_headers`, [
+  "/*",
+  "  Cross-Origin-Opener-Policy: same-origin",
+  "  Cross-Origin-Embedder-Policy: require-corp",
+  "  Cross-Origin-Resource-Policy: same-origin",
+  "  X-Content-Type-Options: nosniff",
+  "  Referrer-Policy: no-referrer",
+  "  Permissions-Policy: camera=(), geolocation=(), payment=(), usb=()",
+  `  Content-Security-Policy: ${csp}`,
+  "",
+  "/assets/*",
+  "  Cache-Control: public, max-age=31536000, immutable",
+  "",
+  "/runtime/*",
+  "  Cache-Control: public, max-age=31536000, immutable",
+  "",
+].join("\n"));
 
 // Stage locally downloaded model weights so `bun run preview` can serve the
 // same /models/<id>/ paths the container image publishes. Absent weights are

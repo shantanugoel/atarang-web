@@ -59,3 +59,6 @@ Thumbs.db
 
 # Local model staging produced by models/web/download.ts
 /model-files/
+
+# Wrangler local state
+.wrangler/

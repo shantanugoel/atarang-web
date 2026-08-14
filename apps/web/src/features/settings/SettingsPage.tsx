@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowSquareOut, CloudSlash, Cpu, Database, DownloadSimple, Info, MusicNotesSimple, ShieldCheck, UploadSimple, Waveform } from "@phosphor-icons/react";
 import {appVersion} from "../../generated/app-version";
+import {REPOSITORY, detectedCloudOrigin, useCloudAvailability} from "../separation/cloudAvailability";
 import { libraryUsage, putSetting } from "../../storage/repositories";
 import {downloadBackup,restoreBackup} from "../../storage/backup";
 import {userMessage} from "../../app/errorText";
@@ -71,8 +72,6 @@ const SETTING_SECTIONS=[
 ] as const;
 const settingSection=()=>SETTING_SECTIONS.find(section=>location.hash===`#${section.id}`)?.id??"about";
 
-const REPOSITORY="https://github.com/shantanugoel/atarang-web";
-
 /** The mark from the browser tab, at a size you can actually see. */
 const AtarangMark=()=>(
   <svg className={styles.mark} viewBox="0 0 32 32" aria-hidden>
@@ -85,8 +84,18 @@ export function SettingsPage() {
   const [storage, setStorage] = useState<StorageStatus | null>(null);
   const[backupStatus,setBackupStatus]=useState(""),[quarantineCount,setQuarantineCount]=useState(0);const restoreInput=useRef<HTMLInputElement>(null);
   const model=useModelManager(),modelInput=useRef<HTMLInputElement>(null);
-  const existingCloud=getCloudConfiguration();
-  const[cloudOrigin,setCloudOrigin]=useState(existingCloud?.origin??location.origin),[cloudKey,setCloudKey]=useState(existingCloud?.deploymentKey??""),[cloudStatus,setCloudStatus]=useState(existingCloud?"Configured for this session.":"Not configured.");
+  const cloudAvailable=useCloudAvailability();
+  // getCloudConfiguration builds a fresh object every render, so the effect
+  // below keys on the origin string instead — an object identity would never
+  // compare equal and would re-run it on every render.
+  const existingCloud=getCloudConfiguration(),existingOrigin=existingCloud?.origin??"";
+  const[cloudOrigin,setCloudOrigin]=useState(existingCloud?.origin??detectedCloudOrigin()??location.origin),[cloudKey,setCloudKey]=useState(existingCloud?.deploymentKey??""),[cloudStatus,setCloudStatus]=useState("");
+  // Detection usually settles long before Settings is opened, so the field is
+  // already right on first render. It only lands late when someone opens
+  // Settings within the probe's couple of seconds, and only an untouched field
+  // is filled in — a half-typed address is not ours to overwrite.
+  const cloudTouched=useRef(false);
+  useEffect(()=>{const found=detectedCloudOrigin();if(found&&!existingOrigin&&!cloudTouched.current)setCloudOrigin(found)},[cloudAvailable,existingOrigin]);
   const[section,setSection]=useState(settingSection);
   const refresh = useCallback(async () => { const [estimate, persisted, localBytes] = await Promise.all([navigator.storage.estimate(), navigator.storage.persisted?.() ?? false, libraryUsage()]); setStorage({ persisted, usage: estimate.usage ?? 0, quota: estimate.quota ?? 0, libraryBytes: localBytes }); }, []);
   useEffect(() => { void refresh();void runIntegrityScan().then(()=>listQuarantine()).then(items=>setQuarantineCount(items.length)); }, [refresh]);
@@ -127,7 +136,7 @@ export function SettingsPage() {
         <section id="audio"><h2>Audio engine</h2><dl><div><dt>Four-stem playback</dt><dd className={crossOriginIsolated ? styles.good : ""}>{crossOriginIsolated ? "Available" : "Not available in this browser"}</dd></div><div><dt>Audio memory</dt><dd>{typeof SharedArrayBuffer === "undefined" ? "Copied between threads (a little slower)" : "Shared between threads"}</dd></div><div><dt>Output</dt><dd>System default</dd></div></dl></section>
         <UserChordLibrary/>
         <section id="models"><h2>Browser separation model</h2><p>Download the four-stem model once to separate songs in this browser. Every piece is checked against its checksum before anything is installed.</p><dl><div><dt>Installed models</dt><dd>{model.models.length?model.models.map(item=>item.manifest.modelId).join(", "):"None"}</dd></div><div><dt>Download size</dt><dd>{model.manifest?formatBytes(model.manifest.totalBytes):"Loading…"}</dd></div><div><dt>This browser</dt><dd className={model.models.length&&!model.qualifying?styles.good:""}>{deviceReadout(model)}</dd></div></dl><div className={styles.actions}>{model.manifest&&!model.progress&&!model.models.some(item=>item.id===model.manifest?.modelArtifactId)&&<button className={styles.primary} onClick={()=>void model.download()}><DownloadSimple/>Download browser model · {formatBytes(model.manifest.totalBytes)}</button>}{model.progress&&<button onClick={model.cancel}>Cancel download · {Math.round(model.progress.completedBytes/model.progress.totalBytes*100)}%</button>}{model.models[0]&&<button disabled={model.qualifying} onClick={()=>void model.probe(model.models[0]!.id)}><Cpu/>{model.qualifying?`Testing… ${Math.round(model.qualificationProgress*100)}%`:"Test this device's speed (optional)"}</button>}{model.qualifying&&<button onClick={model.cancel}>Cancel test</button>}</div>{model.manifest&&<p role="status">{model.models.some(item=>item.id===model.manifest?.modelArtifactId)?"The model is installed and ready. The optional test only measures how fast this device is, and keeps running if you go to Library or Studio.":"The model has not been downloaded yet."}</p>}<details className={styles.advanced}><summary>Advanced model package</summary><p>Only use this if you maintain a separately reviewed Atarang model manifest.</p><button onClick={()=>modelInput.current?.click()}><UploadSimple/>Import a model manifest</button><input ref={modelInput} className="sr-only" type="file" accept="application/json,.json" aria-label="Import a model manifest" onChange={event=>{const file=event.target.files?.[0];if(file)void model.importManifest(file);event.target.value=""}}/></details>{model.error&&<p role="alert">{modelErrorMessage(model.error)}</p>}</section>
-        <section id="privacy"><h2>Cloud processing</h2><div className={styles.notice}><CloudSlash/><div><strong>Cloud is never automatic</strong><p>Audio only leaves this browser after you confirm it, every time.</p></div></div><div className={styles.cloudForm}><label>Server address<input type="url" value={cloudOrigin} onChange={event=>setCloudOrigin(event.target.value)} placeholder="https://atarang.example.com"/></label><label>Deployment key<input type="password" value={cloudKey} onChange={event=>setCloudKey(event.target.value)} autoComplete="off" placeholder="Session-only operator key"/></label><p>The deployment key is kept only until you close this tab, and is never included in a backup.</p><div className={styles.actions}><button className={styles.primary} onClick={()=>void saveCloudConfiguration()}>Save and test</button><button onClick={()=>{setCloudConfiguration(null);setCloudKey("");setCloudStatus("Session configuration cleared.")}}>Clear session</button></div><p role="status">{cloudStatus}</p></div></section>
+        <section id="privacy"><h2>Cloud processing</h2><div className={styles.notice}><CloudSlash/><div><strong>Cloud is never automatic</strong><p>Audio only leaves this browser after you confirm it, every time.</p></div></div>{cloudAvailable==="none"&&<div className={styles.notice}><CloudSlash/><div><strong>This app has no server</strong><p>Cloud separation and fetching from YouTube run on a server you host yourself, and this deployment does not include one. Everything else works entirely in this browser. <a href={REPOSITORY} target="_blank" rel="noreferrer">Host your own copy on GitHub<ArrowSquareOut/></a></p></div></div>}<div className={styles.cloudForm}><label>Server address<input type="url" value={cloudOrigin} onChange={event=>{cloudTouched.current=true;setCloudOrigin(event.target.value)}} placeholder="https://atarang.example.com"/></label><label>Deployment key<input type="password" value={cloudKey} onChange={event=>setCloudKey(event.target.value)} autoComplete="off" placeholder="Session-only operator key"/></label><p>The deployment key is kept only until you close this tab, and is never included in a backup.</p><div className={styles.actions}><button className={styles.primary} onClick={()=>void saveCloudConfiguration()}>Save and test</button><button onClick={()=>{setCloudConfiguration(null);setCloudKey("");setCloudStatus("Session configuration cleared.")}}>Clear session</button></div><p role="status">{cloudStatus||(existingCloud?"Configured for this session.":cloudAvailable==="checking"?"Checking for a server…":cloudAvailable==="found"?"A server answered at this address. Enter its deployment key.":"Not configured.")}</p></div></section>
       </div>
     </div>
   </div>;

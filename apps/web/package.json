@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:e2e": "playwright test",
-    "test:e2e:separation": "ATARANG_E2E_SEPARATION=1 playwright test separation.e2e.ts"
+    "test:e2e:separation": "ATARANG_E2E_SEPARATION=1 playwright test separation.e2e.ts",
+    "cfdeploy": "bun run build.ts && bunx wrangler deploy"
   },
   "dependencies": {
     "@atarang/contracts": "workspace:*",
@@ -30,6 +31,7 @@
     "@types/bun": "^1.2.19",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "wrangler": "^4.0.0"
   }
 }
