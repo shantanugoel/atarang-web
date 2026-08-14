@@ -1,0 +1,87 @@
+name: atarang-youtube
+
+services:
+  postgres:
+    image: postgres:18.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: atarang
+      POSTGRES_USER: atarang
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U atarang -d atarang]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  object:
+    build:
+      context: ../..
+      dockerfile: infra/images/object.Dockerfile
+    command: [server, /data]
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes:
+      - object-data:/data
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/images/api.Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      ATARANG_DATABASE_URL: postgresql+psycopg://atarang:${POSTGRES_PASSWORD}@postgres/atarang
+      ATARANG_DEPLOYMENT_KEY: ${DEPLOYMENT_KEY:?set DEPLOYMENT_KEY}
+      ATARANG_PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN}
+      ATARANG_OBJECT_BACKEND: s3
+      ATARANG_S3_ENDPOINT_URL: http://object:9000
+      ATARANG_S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      ATARANG_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      ATARANG_YOUTUBE_ENABLED: "true"
+      ATARANG_YOUTUBE_ACQUISITION_COMPILED: "true"
+      ATARANG_CLOUD_ENABLED: "true"
+      ATARANG_CPU_WORKER_AVAILABLE: "false"
+      ATARANG_CUDA_WORKER_AVAILABLE: "false"
+    tmpfs:
+      - /tmp:size=64M,uid=10001,gid=10001,mode=0700
+    depends_on:
+      postgres:
+        condition: service_healthy
+      object:
+        condition: service_started
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready')"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+
+  acquisition:
+    build:
+      context: ../..
+      dockerfile: infra/images/acquisition.Dockerfile
+    restart: unless-stopped
+    environment:
+      ATARANG_DATABASE_URL: postgresql+psycopg://atarang:${POSTGRES_PASSWORD}@postgres/atarang
+      ATARANG_OBJECT_BACKEND: s3
+      ATARANG_S3_ENDPOINT_URL: http://object:9000
+      ATARANG_S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      ATARANG_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      ATARANG_YOUTUBE_ENABLED: "true"
+      ATARANG_YOUTUBE_ACQUISITION_COMPILED: "true"
+      ATARANG_YOUTUBE_ACQUISITION_WORKER_ID: youtube-acquisition-1
+    read_only: true
+    tmpfs:
+      - /tmp:size=2G,uid=10003,gid=10003,mode=0700
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  object-data:
