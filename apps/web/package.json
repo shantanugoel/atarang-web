@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:e2e": "playwright test",
-    "test:e2e:separation": "ATARANG_E2E_SEPARATION=1 playwright test separation.e2e.ts"
+    "test:e2e:separation": "ATARANG_E2E_SEPARATION=1 playwright test separation.e2e.ts",
+    "test:e2e:chords": "playwright test chords-eval.e2e.ts --project=chromium"
   },
   "dependencies": {
     "@atarang/contracts": "workspace:*",
