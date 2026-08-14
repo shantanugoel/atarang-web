@@ -203,7 +203,8 @@ export function ChordWorkspace({
     view = useStudioStore((state) => state.chordView),
     setView = useStudioStore((state) => state.setChordView),
     setTab = useStudioStore((state) => state.setTab),
-    [settings, setSettings] = useState<ChordDisplay & { capo: number }>({ transposeSemitones: 0, complexity: "full", capo: 0 }),
+    settings = useStudioStore((state) => state.chordDisplay),
+    setSettings = useStudioStore((state) => state.setChordDisplay),
     [leadMode,setLeadMode] = useState<"both"|"lyrics"|"chords">("both"),
     [selectedChord,setSelectedChord] = useState<string>(),
     [panel, setPanel] = useState<"paste" | "edit" | null>(null),
@@ -216,8 +217,9 @@ export function ChordWorkspace({
   const activeView = view === "timeline" && !analysis?.segments.length && chart ? "chart"
     : view === "chart" && !chart && analysis?.segments.length ? "timeline"
     : view;
+  // Transpose, capo and simplify are reset by `openSong`, not here: this effect
+  // also runs on a remount, and a remount is what a trip to the Library is.
   useEffect(() => {
-    setSettings({ transposeSemitones: 0, complexity: "full", capo: 0 });
     setPanel(null);
     setDraft("");
     setIssues([]);
@@ -343,11 +345,10 @@ export function ChordWorkspace({
       </div>
     </section>
   );
-  const changeSettings = (change: Partial<typeof settings>) => setSettings((value) => {
-    const next = { ...value, ...change };
-    if (chart) save({ ...chart, ...next });
-    return next;
-  });
+  const changeSettings = (change: Partial<ChordDisplay>) => {
+    if (chart) save({ ...chart, ...settings, ...change });
+    setSettings(change);
+  };
   const download = () => {
     if (!chart) return;
     const url = URL.createObjectURL(

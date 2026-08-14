@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { assertModelArtifactManifest, type ModelArtifactManifestV1 } from "@atarang/contracts";
 import { runtimeAssets } from "../../generated/runtime-assets";
 import type { CapabilityRecord, ModelRecord } from "../../storage/database";
@@ -22,7 +22,10 @@ const updateQualification = (next: Partial<QualificationState>) => {
 
 // A download is a property of the browser, not of whoever asked for it. Kept per
 // hook instance, two mounted copies each believe nothing is running and a second
-// click fetches another 126 MB into the same destination as the first.
+// click fetches another 126 MB into the same destination as the first — and the
+// worker has to live out here for the same reason, or leaving Settings and
+// coming back mid-download leaves a Cancel button with nothing to cancel.
+let downloadWorker: { worker: Worker; requestId: string } | null = null;
 let downloadState: Progress | null = null;
 const downloadListeners = new Set<() => void>();
 const downloadSnapshot = () => downloadState;
@@ -46,7 +49,6 @@ export function useModelManager() {
   const [evicted, setEvicted] = useState(false);
   const [storedCapability, setStoredCapability] = useState<CapabilityRecord | null>(null);
   const [error, setError] = useState("");
-  const workerRef = useRef<{ worker: Worker; requestId: string } | null>(null);
   const qualification = useSyncExternalStore(subscribeQualification, qualificationSnapshot, qualificationSnapshot);
   const progress = useSyncExternalStore(subscribeDownload, downloadSnapshot, downloadSnapshot);
   const refresh = useCallback(() => void Promise.all([listModels(), listCapabilities()]).then(async ([nextModels, capabilities]) => {
@@ -98,7 +100,7 @@ export function useModelManager() {
     if (estimate.quota && available < needed) { setError("quota_exceeded"); return; }
     const worker = new Worker(runtimeAssets.inferenceWorker, { type: "module", name: "atarang-model-download" });
     const requestId = uuidV7();
-    workerRef.current = { worker, requestId };
+    downloadWorker = { worker, requestId };
     setDownloadProgress({ completedBytes: 0, totalBytes: manifest.totalBytes, piece: 0 });
     await new Promise<void>((resolve, reject) => {
       worker.onmessage = ({ data }) => {
@@ -114,13 +116,13 @@ export function useModelManager() {
       worker.postMessage({ type: "model/download", requestId, manifest });
     }).catch((reason) => setError(reason instanceof Error ? reason.message : "model_download_failed")).finally(() => {
       worker.terminate();
-      workerRef.current = null;
+      downloadWorker = null;
       setDownloadProgress(null);
     });
   }, [manifest, refresh]);
 
   const cancel = useCallback(() => {
-    const current = workerRef.current;
+    const current = downloadWorker;
     if (current) current.worker.postMessage({ type: "model/cancel", requestId: current.requestId });
     else if (qualificationWorker) qualificationWorker.cancel();
   }, []);

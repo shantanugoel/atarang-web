@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { PracticeSectionV1, PracticeStateV1 } from "@atarang/contracts";
+import type { ChordDisplay } from "../chords/shapes";
 import { uuidV7 } from "../../storage/ids";
 import { stepZoom } from "./waveformView";
 
@@ -32,6 +33,12 @@ export interface StudioState {
   /** Selected user chord chart, which outlives the Chords tab that selects it. */
   chartId: string | null;
   chordView: ChordView;
+  /**
+   * How the chords are read: transpose, capo and how far symbols are simplified.
+   * A selected user chart saves its own copy, but detected chords have nowhere
+   * else to live — held locally they were reset by a trip to the Library.
+   */
+  chordDisplay: ChordDisplay;
   target: StemKind;
   muted: Record<StemKind, boolean>;
   soloed: Record<StemKind, boolean>;
@@ -61,6 +68,7 @@ export interface StudioState {
   setPane(pane: StudioPane): void;
   setChartId(chartId: string | null): void;
   setChordView(view: ChordView): void;
+  setChordDisplay(change: Partial<ChordDisplay>): void;
   openSong(songId: string | null): void;
   setTarget(target: StemKind): void;
   toggleMute(stem: StemKind): void;
@@ -90,6 +98,7 @@ const stems: Record<StemKind, boolean> = { vocals: false, drums: false, bass: fa
 const defaultLevels: Record<StemKind, number> = { vocals: 0, drums: 0, bass: -2.5, other: -4 };
 const centered: Record<StemKind, number> = { vocals: 0, drums: 0, bass: 0, other: 0 };
 const MIN_LOOP_US = 500_000;
+const DEFAULT_CHORD_DISPLAY: ChordDisplay = { transposeSemitones: 0, complexity: "full", capo: 0 };
 // Loud enough to pick out a line, quiet enough that the rest is still a band —
 // muting everything else leaves nothing to play along to.
 const LEARN_FOREGROUND_DB = 3, LEARN_BACKGROUND_DB = -9;
@@ -111,6 +120,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   pane: "song",
   chartId: null,
   chordView: "timeline",
+  chordDisplay: { ...DEFAULT_CHORD_DISPLAY },
   target: "vocals",
   muted: { ...stems },
   soloed: { ...stems },
@@ -136,9 +146,10 @@ export const useStudioStore = create<StudioState>((set) => ({
   setPane: (pane) => set({ pane }),
   setChartId: (chartId) => set({ chartId }),
   setChordView: (chordView) => set({ chordView }),
+  setChordDisplay: (change) => set((s) => ({ chordDisplay: { ...s.chordDisplay, ...change } })),
   // A different song, not a remount: the zoom and the chart belong to the song
   // that was open, and the pane and tab are how this user reads any song.
-  openSong: (songId) => set((s) => (s.songId === songId ? {} : { songId, zoom: 1, chartId: null })),
+  openSong: (songId) => set((s) => (s.songId === songId ? {} : { songId, zoom: 1, chartId: null, chordDisplay: { ...DEFAULT_CHORD_DISPLAY } })),
   setTarget: (target) => set({ target }),
   toggleMute: (stem) => set((s) => ({ muted: { ...s.muted, [stem]: !s.muted[stem] } })),
   toggleSolo: (stem) => set((s) => ({ soloed: { ...s.soloed, [stem]: !s.soloed[stem] } })),
