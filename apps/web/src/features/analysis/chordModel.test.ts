@@ -1,7 +1,7 @@
 import {describe,expect,test} from "bun:test";
 import {harmonicTrust,type LearnedFrame} from "./chordModel";
 
-const frame=(activations:number[]):LearnedFrame=>({harmonic:Float64Array.from(activations),bass:new Float64Array(12),energy:1});
+const frame=(activations:number[]):LearnedFrame=>({harmonic:Float64Array.from(activations),bass:new Float64Array(12),tag:new Float64Array(170),energy:1});
 const held=(activations:number[])=>Array.from({length:40},()=>frame(activations));
 
 describe("is this harmony at all",()=>{

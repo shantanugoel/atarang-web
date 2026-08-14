@@ -45,11 +45,21 @@ function runAnalysisWorker<T>(message: object, completeType: string, errorType: 
  * Once four stems exist there is a far better answer available, so it is taken.
  */
 export async function ensureStemChordAnalysis(original: OriginalRecord, separation: SeparationRecord, onProgress?: (fraction: number) => void) {
+  // The mixture pass first, always. It writes the beat grid this decode places
+  // its chords on — without it the boundaries fall back to fixed half-seconds —
+  // and it writes a chord analysis of its own, so letting the two run at once
+  // means racing to be the last one to save. Repeated calls are deduplicated,
+  // so this costs nothing once the song has been analysed.
+  await ensureWaveform(original).catch(() => {});
   const existing = await getChordAnalysis(original.id);
-  // The stems pass exists to get the drums and the vocal line out of the way of
-  // template chroma. A learned decode of the mixture does not need that, and is
-  // the better answer, so it is not replaced by one.
-  if (existing?.document.algorithmVersion === "atarang-chroma/3-stems" || existing?.document.algorithmVersion === "atarang-crema/1") return;
+  // Only an analysis that already came from the stems is left alone. A decode of
+  // the mixture — learned or not — had to find the harmony through the drums and
+  // the vocal line, and this pass does not.
+  // ponytail: a song decoded from stems on a browser that could not load the
+  // model keeps that decode even if the model later works. The per-song
+  // re-analyse action is the way out; nothing here can tell the difference
+  // without running the model to find out.
+  if (existing?.document.algorithmVersion.endsWith("-stems")) return;
   if (onProgress) stemChordProgress.set(original.id, onProgress); else stemChordProgress.delete(original.id);
   const running = activeStemChords.get(original.id);
   if (running) return running;
@@ -68,13 +78,13 @@ export async function ensureStemChordAnalysis(original: OriginalRecord, separati
     const beats = await getBeatGrid(original.id);
     // The "other" stem is the one the worker counts frames against.
     const stemFrames = separation.manifest.stems.find((stem) => stem.kind === "other")?.durationFrames ?? 0;
-    const result = await runAnalysisWorker<{ segments: ChordAnalysisV1["segments"]; key: string | null }>(
+    const result = await runAnalysisWorker<{ segments: ChordAnalysisV1["segments"]; key: string | null; algorithm: ChordAlgorithmV1 }>(
       { type: "chords/analyze", songId: original.id, generation: 1, otherOpfsPath, bassOpfsPath, boundaries: chordBoundaries(beats?.document.beats.map((beat) => beat.timeUs) ?? [], beats?.document.reliable ?? false, durationUs) },
       "chords/complete", "chords/error",
       stemFrames ? { type: "chords/progress", report: (frames) => stemChordProgress.get(original.id)?.(Math.min(1, frames / stemFrames)) } : undefined,
     );
     const now = new Date().toISOString();
-    await putChordAnalysis({ id: original.id, originalId: original.id, schemaVersion: 1, createdAt: now, updatedAt: now, document: chordDocumentFrom(original.id, "atarang-chroma/3-stems", result, now) });
+    await putChordAnalysis({ id: original.id, originalId: original.id, schemaVersion: 1, createdAt: now, updatedAt: now, document: chordDocumentFrom(original.id, result.algorithm, result, now) });
   })().finally(() => { activeStemChords.delete(original.id); stemChordProgress.delete(original.id); });
 
   activeStemChords.set(original.id, promise);
@@ -105,8 +115,13 @@ async function analyze(original: OriginalRecord) {
   const now = new Date().toISOString();
   const {beatAnalysis,chordAnalysis,...waveformResult}=result,record: WaveformRecord = { id:original.id, originalId:original.id, schemaVersion:1, createdAt:now, updatedAt:now, algorithmVersion:ALGORITHM_VERSION, ...waveformResult };
   const document:BeatGridV1={schema:"atarang.beats/1",originalId:original.id,revision:0,algorithmVersion:CURRENT_BEAT_ALGORITHM,bpm:beatAnalysis.bpm,reliability:beatAnalysis.reliability,reliable:beatAnalysis.reliable,userEdited:false,beats:beatAnalysis.beatsFrames.map((frame,index)=>{const beatInBar=(((index-beatAnalysis.downbeatPhase)%4+4)%4+1) as 1|2|3|4;return{timeUs:Math.round(frame/result.sampleRate*1_000_000),beatInBar,downbeat:beatInBar===1}}),updatedAt:now};
-  const existingBeat=await getBeatGrid(original.id);
-  const writes:Promise<unknown>[]=[putWaveform(record),putChordAnalysis({id:original.id,originalId:original.id,schemaVersion:1,createdAt:now,updatedAt:now,document:chordDocumentFrom(original.id,chordAnalysis.algorithm,chordAnalysis,now)})];
+  const [existingBeat,existingChords]=await Promise.all([getBeatGrid(original.id),getChordAnalysis(original.id)]);
+  const writes:Promise<unknown>[]=[putWaveform(record)];
+  // A decode of the stems saw harmony this pass had to guess at through the
+  // drums and the vocal line, so it is not overwritten by one — the same way a
+  // beat grid the user corrected is not. Re-running this pass for its waveform
+  // or its beats used to cost the better chords as a side effect.
+  if(!existingChords?.document.algorithmVersion.endsWith("-stems"))writes.push(putChordAnalysis({id:original.id,originalId:original.id,schemaVersion:1,createdAt:now,updatedAt:now,document:chordDocumentFrom(original.id,chordAnalysis.algorithm,chordAnalysis,now)}));
   if(!existingBeat?.document.userEdited)writes.push(putBeatGrid({id:original.id,originalId:original.id,schemaVersion:1,createdAt:now,updatedAt:now,document}));
   await Promise.all(writes);
   return record;

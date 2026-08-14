@@ -12,6 +12,11 @@
 //    favour the key;
 // 5. Krumhansl-Schmuckler for the key.
 //
+// Stages 1 and 3 are the fallback now rather than the main path: when the model
+// loads, `detectTaggedChords` reads the chords off its own trained head and
+// stages 2, 4 and 5 carry on unchanged. The templates still run on a browser
+// that cannot load it, which is why they are still here.
+//
 // Everything here is pure and works on plain arrays, so a synthetic progression
 // can be decoded in a test without an audio engine.
 
@@ -338,9 +343,9 @@ export function chordScores(chroma: ArrayLike<number>, bass: ArrayLike<number>, 
   });
 }
 
-function keyContains(key: MusicalKey, state: ChordState) {
+function keyContains(key: MusicalKey, pitchClasses: readonly number[]) {
   const scale = key.mode === "major" ? MAJOR_SCALE : MINOR_SCALE;
-  return state.pitchClasses.every((pitch) => scale.includes(((pitch - key.tonic) % 12 + 12) % 12 as never));
+  return pitchClasses.every((pitch) => scale.includes(((pitch - key.tonic) % 12 + 12) % 12 as never));
 }
 
 /**
@@ -358,10 +363,14 @@ function keyContains(key: MusicalKey, state: ChordState) {
  * trade-off.
  */
 export function decodeChords(beatScores: readonly number[][], key: MusicalKey | null) {
+  return viterbi(beatScores, CHORD_STATES.map((state) => (key && state && !keyContains(key, state.pitchClasses) ? OUT_OF_KEY_PENALTY : 0)));
+}
+
+/** The decode itself, over whatever states the caller scored. */
+function viterbi(beatScores: readonly number[][], outOfKey: readonly number[]) {
   const first = beatScores[0];
   if (!first?.length) return [];
   const stateCount = first.length;
-  const outOfKey = CHORD_STATES.map((state) => (key && state && !keyContains(key, state) ? OUT_OF_KEY_PENALTY : 0));
 
   let previous = [...first];
   const backlinks: number[][] = [];
@@ -489,6 +498,139 @@ export function detectChords(
   const segments: ChordSegment[] = [];
   for (let index = 0; index < path.length; index++) {
     const chord = chordSymbol(CHORD_STATES[path[index]!] ?? null, key);
+    const confidence = chordConfidence(path[index]!, scores[index]!) * trust;
+    const previous = segments.at(-1);
+    if (previous?.chord === chord && previous.endTimeUs === windows[index]!.start) {
+      previous.endTimeUs = windows[index]!.end;
+      previous.confidence = Math.max(previous.confidence, confidence);
+    } else {
+      segments.push({ startTimeUs: windows[index]!.start, endTimeUs: windows[index]!.end, chord, confidence });
+    }
+  }
+  return { segments, key };
+}
+
+/**
+ * The model's own chord vocabulary, read rather than matched.
+ *
+ * The seven templates above are a hand-built guess at what a chord looks like in
+ * a pitch-class profile, with hand-tuned priors deciding how much a seventh has
+ * to be heard before it is printed. The checkpoint carries a head that was
+ * trained to name all 170 of these directly, on annotated recordings, and it
+ * knows the priors because it learned them.
+ *
+ * Labels arrive in Harte notation from the checkpoint's own encoder — see
+ * `models/chords/convert.py`, which exports the order rather than assuming it.
+ */
+const TAG_QUALITIES: Record<string, { symbol: string; intervals: readonly number[] }> = {
+  maj: { symbol: "", intervals: [0, 4, 7] },
+  min: { symbol: "m", intervals: [0, 3, 7] },
+  dim: { symbol: "dim", intervals: [0, 3, 6] },
+  aug: { symbol: "aug", intervals: [0, 4, 8] },
+  maj7: { symbol: "maj7", intervals: [0, 4, 7, 11] },
+  min7: { symbol: "m7", intervals: [0, 3, 7, 10] },
+  "7": { symbol: "7", intervals: [0, 4, 7, 10] },
+  dim7: { symbol: "dim7", intervals: [0, 3, 6, 9] },
+  hdim7: { symbol: "m7b5", intervals: [0, 3, 6, 10] },
+  minmaj7: { symbol: "mMaj7", intervals: [0, 3, 7, 11] },
+  maj6: { symbol: "6", intervals: [0, 4, 7, 9] },
+  min6: { symbol: "m6", intervals: [0, 3, 7, 9] },
+  sus2: { symbol: "sus2", intervals: [0, 2, 7] },
+  sus4: { symbol: "sus4", intervals: [0, 5, 7] },
+};
+const TAG_NATURALS: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+
+export interface TaggedChord { root: number; symbol: string; pitchClasses: readonly number[] }
+
+/**
+ * One vocabulary entry, or null for the two that name no chord.
+ *
+ * `N` is silence or no harmony. `X` is the annotators' "some chord outside this
+ * vocabulary", which the app has no way to draw or transpose — so it says
+ * nothing, rather than naming a chord the model explicitly declined to name.
+ */
+export function parseTagLabel(label: string): TaggedChord | null {
+  const match = label.match(/^([A-G])([#b]?):(.+)$/);
+  const quality = match ? TAG_QUALITIES[match[3]!] : undefined;
+  if (!match || !quality) return null;
+  const root = ((TAG_NATURALS[match[1]!]! + (match[2] === "#" ? 1 : match[2] === "b" ? -1 : 0)) % 12 + 12) % 12;
+  return { root, symbol: quality.symbol, pitchClasses: quality.intervals.map((interval) => (root + interval) % 12) };
+}
+
+/**
+ * Chords from the trained head, decoded over the same beat windows.
+ *
+ * The posteriors are used in the score units the transition penalties are
+ * written in rather than as log-probabilities. They are already a normalised
+ * softmax over the states, so a margin means the same thing here as a cosine
+ * margin did, and one Viterbi with one tuned penalty stays honest.
+ *
+ * ponytail: if chords start flapping between neighbours, the fix is the log
+ * domain with a re-tuned CHANGE_PENALTY, not a bigger penalty here.
+ */
+export function detectTaggedChords(
+  frames: { harmonic: Float64Array; bass: Float64Array; tag: Float64Array }[],
+  hopSeconds: number,
+  boundaries: readonly number[],
+  vocabulary: readonly string[],
+  trust = 1,
+): { segments: ChordSegment[]; key: MusicalKey | null } {
+  if (frames.length === 0 || boundaries.length < 2) return { segments: [], key: null };
+  const states = vocabulary.map(parseTagLabel);
+
+  // The key still comes from the pitch head: it is a statement about the whole
+  // song's pitch content, which is what Krumhansl-Schmuckler correlates against.
+  const average = new Float64Array(12);
+  for (const frame of frames) for (let pitch = 0; pitch < 12; pitch++) average[pitch] = average[pitch]! + frame.harmonic[pitch]!;
+  const key = estimateKey(average);
+
+  const windows = boundaries.slice(0, -1).map((start, index) => {
+    const end = boundaries[index + 1]!;
+    const firstFrame = Math.max(0, Math.floor(start / 1_000_000 / hopSeconds));
+    const lastFrame = Math.min(frames.length - 1, Math.floor(end / 1_000_000 / hopSeconds));
+    const tag = new Float64Array(states.length);
+    const bass = new Float64Array(12);
+    let count = 0;
+    for (let index2 = firstFrame; index2 <= lastFrame; index2++) {
+      const frame = frames[index2]!;
+      for (let state = 0; state < states.length; state++) tag[state] = tag[state]! + (frame.tag[state] ?? 0);
+      for (let pitch = 0; pitch < 12; pitch++) bass[pitch] = bass[pitch]! + frame.bass[pitch]!;
+      count++;
+    }
+    if (count > 0) {
+      for (let state = 0; state < states.length; state++) tag[state] = tag[state]! / count;
+      for (let pitch = 0; pitch < 12; pitch++) bass[pitch] = bass[pitch]! / count;
+    }
+    return { start, end, tag, bass };
+  });
+
+  // The tag head hears pitch classes, and a chord and its relative minor are
+  // nearly the same ones — C:maj6 and A:min7 are the same four notes, and the
+  // only witness to which is playing is what the bass is doing under them. The
+  // bass head is that witness, and the same relative agreement the template
+  // decoder uses applies here: neutral when the bass says nothing, rather than
+  // scaling every chord down together.
+  const chordCount = Math.max(1, states.filter(Boolean).length);
+  const scores = windows.map((window) => {
+    let bassPeak = 0;
+    for (let pitch = 0; pitch < 12; pitch++) bassPeak = Math.max(bassPeak, window.bass[pitch]!);
+    const agreements = states.map((state) => {
+      if (!state || bassPeak <= 0) return 0;
+      let inversion = 0;
+      for (let index = 1; index < state.pitchClasses.length; index++) inversion = Math.max(inversion, window.bass[state.pitchClasses[index]!]! / bassPeak);
+      return window.bass[state.root]! / bassPeak + 0.5 * inversion;
+    });
+    const mean = agreements.reduce((sum, value) => sum + value, 0) / chordCount;
+    return states.map((_, state) => window.tag[state]! + BASS_WEIGHT * (agreements[state]! - mean));
+  });
+  const outOfKey = states.map((state) => (key && state && !keyContains(key, state.pitchClasses) ? OUT_OF_KEY_PENALTY : 0));
+  const path = viterbi(scores, outOfKey);
+
+  const segments: ChordSegment[] = [];
+  const names = (key: MusicalKey | null) => (FLAT_TONICS.has(key ? (key.mode === "major" ? key.tonic : (key.tonic + 3) % 12) : -1) ? FLAT_NAMES : SHARP_NAMES);
+  for (let index = 0; index < path.length; index++) {
+    const state = states[path[index]!] ?? null;
+    const chord = state ? `${names(key)[state.root]}${state.symbol}` : "N";
     const confidence = chordConfidence(path[index]!, scores[index]!) * trust;
     const previous = segments.at(-1);
     if (previous?.chord === chord && previous.endTimeUs === windows[index]!.start) {

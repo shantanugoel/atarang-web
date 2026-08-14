@@ -1,23 +1,26 @@
 import * as ort from "onnxruntime-web/webgpu";
-import { chordModelUrl } from "../../generated/chord-model";
+import { chordModelUrl, chordVocabulary } from "../../generated/chord-model";
 import { ortMjsUrl, ortWasmUrl } from "../../generated/ort-assets";
 import { CQT_BINS, CQT_HARMONICS, amplitudeToDb } from "./cqt";
 
 /**
- * Pitch classes read by a model instead of matched against templates.
+ * Chords read by a model instead of matched against templates.
  *
  * Template matching assumes the spectral peaks are tonal partials, which on a
  * distorted guitar they are not — the audit measured a tuning histogram whose
  * strongest bin held 1.5% of peak energy, so there was nothing to match and the
  * decoded roots wandered. This model was trained on annotated recordings to
- * name pitch classes directly.
+ * name pitch classes and chords directly.
  *
- * It replaces only the front end. `chord_pitch` is twelve activations and
- * `chord_bass` is twelve plus "no bass", which are exactly the shapes the
- * Viterbi decode, the bass term and the key estimate already consume, so
- * everything downstream is untouched.
+ * Three heads come out of it. `chord_pitch` is twelve pitch-class activations,
+ * which the key estimate reads and which say whether this is harmony at all.
+ * `chord_bass` is twelve plus "no bass", which is the only witness to whether a
+ * chord or its relative minor is playing. `chord_tag` is a softmax over the
+ * model's own 170-chord vocabulary — the thing the paper is about, and what the
+ * decoder now names chords from instead of seven hand-built templates.
  *
- * Provenance, license and the conversion are in `models/chords/README.md`.
+ * Provenance, license, the vocabulary's class order and the conversion are all
+ * in `models/chords/README.md`.
  */
 
 /** One frame per 4096 samples at 44.1 kHz, which is the hop the model was trained at. */
@@ -34,7 +37,7 @@ function open() {
   return session;
 }
 
-export interface LearnedFrame { harmonic: Float64Array; bass: Float64Array; energy: number }
+export interface LearnedFrame { harmonic: Float64Array; bass: Float64Array; tag: Float64Array; energy: number }
 
 /**
  * How much this looks like harmony at all, from the model's own activations.
@@ -81,12 +84,17 @@ export async function learnedChroma(cqt: Float32Array[], energies: readonly numb
     const outputs = await runtime.run({ [runtime.inputNames[0]!]: new ort.Tensor("float32", input, [1, cqt.length, CQT_BINS, CQT_HARMONICS.length]) });
     const pitch = outputs["chord_pitch"]?.data as Float32Array | undefined;
     const bass = outputs["chord_bass"]?.data as Float32Array | undefined;
-    if (!pitch || !bass) return null;
+    const tag = outputs["chord_tag"]?.data as Float32Array | undefined;
+    if (!pitch || !bass || !tag) return null;
+    const tags = chordVocabulary.length;
     const frames = Array.from({ length: cqt.length }, (_, frame) => ({
       harmonic: Float64Array.from({ length: 12 }, (_, pitchClass) => pitch[frame * 12 + pitchClass] ?? 0),
       // The thirteenth bass class is "no bass in this frame", which the decoder
       // expresses as an empty bass profile rather than a class of its own.
       bass: Float64Array.from({ length: 12 }, (_, pitchClass) => bass[frame * 13 + pitchClass] ?? 0),
+      // A softmax over the whole vocabulary, in the order the checkpoint's own
+      // encoder put them — see `chordVocabulary`.
+      tag: Float64Array.from({ length: tags }, (_, state) => tag[frame * tags + state] ?? 0),
       energy: energies[frame] ?? 0,
     }));
     return { frames, trust: harmonicTrust(frames) };

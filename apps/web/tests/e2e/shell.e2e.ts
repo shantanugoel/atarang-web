@@ -1,4 +1,5 @@
 import{expect,test}from"@playwright/test";
+import{syntheticProgression}from"../eval/synthetic";
 import{readFileSync}from"node:fs";
 
 const browserModelManifest=JSON.parse(readFileSync(new URL("../../../../models/web/manifest.json",import.meta.url),"utf8"));
@@ -257,38 +258,46 @@ test("the studio keeps the view you set when you leave and come back",async({pag
 test("the chord strip shows the shape being played and the one to reach next",async({page,isMobile})=>{
   const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
   await page.goto("/library");
-  await page.getByLabel("Choose audio to import").setInputFiles("src/assets/backbeat.mp3");
+  // The bundled demo used to be this fixture, on the strength of decoding to G
+  // then D. It does not: CREMA's own implementation reads it as one D held for
+  // forty seconds, and so does this app now that the trained head decodes it.
+  // A test about the pair at the playhead needs audio that changes chord, so it
+  // brings its own — C, then F, then G, with the changes where it put them.
+  await page.getByLabel("Choose audio to import").setInputFiles({name:"progression.wav",mimeType:"audio/wav",buffer:syntheticProgression(2).mixture});
   await expect(page).toHaveURL(/\/studio\/[0-9a-f-]+/);
   await page.getByRole("button",{name:"Skip for now and just play the song"}).click();
   if(isMobile)await page.getByRole("button",{name:"Song",exact:true}).click();
   await page.getByRole("tab",{name:"Chords"}).click();
   const shapes=page.getByRole("group",{name:"Chord shapes"});
-  // Backbeat decodes to G then D, so the pair at the playhead is unambiguous.
-  await expect(shapes.getByRole("img",{name:"G guitar chord diagram"})).toBeVisible({timeout:30_000});
+  await expect(shapes.getByRole("img",{name:"C guitar chord diagram"})).toBeVisible({timeout:30_000});
   await expect(shapes.getByText("Now",{exact:true})).toBeVisible();
-  await expect(shapes.getByRole("img",{name:"D guitar chord diagram"})).toBeVisible();
+  await expect(shapes.getByRole("img",{name:"F guitar chord diagram"})).toBeVisible();
   await expect(shapes.getByText("Next",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Forward 10 seconds"}).click();
+  await expect(shapes.getByRole("img",{name:"F guitar chord diagram"})).toBeVisible();
+  await expect(shapes.getByRole("img",{name:"G7 guitar chord diagram"})).toBeVisible();
   // Past the last change there is nothing left to reach, so the pair collapses
   // to the one shape still sounding rather than inventing a chord after it.
-  await page.getByRole("button",{name:"Forward 10 seconds"}).click();
-  await expect(shapes.getByRole("img",{name:"D guitar chord diagram"})).toBeVisible();
+  for(let jump=0;jump<2;jump++)await page.getByRole("button",{name:"Forward 10 seconds"}).click();
+  await expect(shapes.getByRole("img",{name:"G7 guitar chord diagram"})).toBeVisible();
   await expect(shapes.getByRole("img")).toHaveCount(1);
   await expect(shapes.getByText("Next",{exact:true})).toBeHidden();
-  // Picking a chord is a lookup of one shape, not a position in the song.
-  await page.getByTitle(/^G · /).click();
+  // Picking a chord is a lookup of one shape, not a position in the song — so
+  // the rest of this asserts on C wherever the playhead happens to be.
+  await page.getByTitle(/^C · /).first().click();
   await expect(shapes.getByText("Selected chord")).toBeVisible();
   await expect(shapes.getByRole("img")).toHaveCount(1);
   // A simplification level reaches the detected chords, not just user charts.
   await page.getByLabel("Simplify").selectOption("power");
-  await expect(shapes.getByRole("img",{name:"G5 guitar chord diagram"})).toBeVisible();
-  await expect(page.getByTitle(/^D · /)).toContainText("D5");
+  await expect(shapes.getByRole("img",{name:"C5 guitar chord diagram"})).toBeVisible();
+  await expect(page.getByTitle(/^F · /).first()).toContainText("F5");
   // The reported bug: the capo control moved and nothing on screen did. A capo
-  // at fret 3 means the hand plays E where the room hears G.
+  // at fret 3 means the hand plays A where the room hears C.
   await page.getByLabel("Simplify").selectOption("full");
   for(let fret=0;fret<3;fret++)await page.getByRole("button",{name:"Increase capo"}).click();
   await expect(shapes).toContainText("shapes with capo 3");
-  await expect(shapes.getByRole("img",{name:"E guitar chord diagram"})).toBeVisible();
-  await expect(page.getByTitle(/^D · /)).toContainText("B");
+  await expect(shapes.getByRole("img",{name:"A guitar chord diagram"})).toBeVisible();
+  await expect(page.getByTitle(/^F · /).first()).toContainText("D");
   expect(errors).toEqual([]);
 });
 

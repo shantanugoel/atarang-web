@@ -35,7 +35,9 @@ htmlcov/
 *.local
 
 # Downloaded model weights. Manifests and download scripts remain tracked.
-/models/**/*.onnx
+# ONNX is the exception and is tracked through Git LFS (see .gitattributes):
+# the chord model is a build input, so ignoring it meant a fresh clone could
+# not build until someone reran a TensorFlow conversion by hand.
 /models/**/*.pt
 /models/**/*.pth
 /models/**/*.th

@@ -1,9 +1,10 @@
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from "mediabunny";
 import FFT from "fft.js";
 import { detectBeatGrid } from "../features/analysis/beatDetection";
-import { TUNING_BINS, accumulateTuning, bassChromaFrame, chordBoundaries, chromaGeometry, detectChords, harmonicChromaFrame, keyName, tuningReference } from "../features/analysis/chordDetection";
+import { TUNING_BINS, accumulateTuning, bassChromaFrame, chordBoundaries, chromaGeometry, detectChords, detectTaggedChords, harmonicChromaFrame, keyName, tuningReference } from "../features/analysis/chordDetection";
 import { CQT_BINS, CQT_HARMONICS, amplitudeToDb, cqtBands, cqtFrame, type CqtBand } from "../features/analysis/cqt";
 import { LEARNED_HOP_DIVISOR, learnedChroma } from "../features/analysis/chordModel";
+import { chordVocabulary } from "../generated/chord-model";
 
 interface WaveformRequest { type: "waveform/analyze"; requestId: string; songId: string; generation: number; opfsPath: string }
 /**
@@ -161,6 +162,21 @@ class ChromaStream {
   }
 }
 
+/**
+ * The learned decode when the model will run, the template chroma when it will not.
+ *
+ * Both callers build the same constant-Q frames — the stems pass was already
+ * paying for them and throwing them away — so both get the same front end, and
+ * a browser that cannot load the model still gets chords from either path.
+ */
+async function decodeChordsFrom(chroma: ChromaStream, boundaries: readonly number[]) {
+  const energies = chroma.frames.filter((_, index) => index % LEARNED_HOP_DIVISOR === 0).map((frame) => frame.energy);
+  const learned = await learnedChroma(chroma.cqt, energies);
+  return learned
+    ? { ...detectTaggedChords(learned.frames, chroma.hopSeconds * LEARNED_HOP_DIVISOR, boundaries, chordVocabulary, learned.trust), learned: true }
+    : { ...detectChords(chroma.frames, chroma.hopSeconds, boundaries, chroma.tuning.trust), learned: false };
+}
+
 async function analyseWaveform(data: WaveformRequest, identity: object) {
   const fft = new FFT(FFT_SIZE), fftInput = new Array<number>(FFT_SIZE).fill(0), fftOutput = fft.createComplexArray();
   const previousMagnitude = new Float64Array(FFT_SIZE / 2 + 1), analysisBuffer = new Float32Array(FFT_SIZE), flux: number[] = [];
@@ -210,12 +226,9 @@ async function analyseWaveform(data: WaveformRequest, identity: object) {
   // The model reads pitch classes off the audio, so the tuning histogram no
   // longer speaks for the front end — the model's own activations say whether
   // this is harmony at all, and scale every confidence the same way.
-  const learned = await learnedChroma(chroma.cqt, chroma.frames.filter((_, index) => index % LEARNED_HOP_DIVISOR === 0).map((frame) => frame.energy));
-  const decoded = learned
-    ? detectChords(learned.frames, chroma.hopSeconds * LEARNED_HOP_DIVISOR, boundaries, learned.trust)
-    : detectChords(chroma.frames, chroma.hopSeconds, boundaries, chroma.tuning.trust);
+  const decoded = await decodeChordsFrom(chroma, boundaries);
   const transfer = levels.flatMap((level) => [level.min.buffer, level.max.buffer, level.rms.buffer]);
-  self.postMessage({ type: "waveform/complete", ...identity, sampleRate: source.sampleRate, channels: source.channels, durationFrames, levels, beatAnalysis, chordAnalysis: { segments: decoded.segments, key: keyName(decoded.key), algorithm: learned ? "atarang-crema/1" : "atarang-chroma/3" } }, { transfer });
+  self.postMessage({ type: "waveform/complete", ...identity, sampleRate: source.sampleRate, channels: source.channels, durationFrames, levels, beatAnalysis, chordAnalysis: { segments: decoded.segments, key: keyName(decoded.key), algorithm: decoded.learned ? "atarang-crema/2" : "atarang-chroma/3" } }, { transfer });
 }
 
 async function analyseStemChords(data: StemChordRequest, identity: object) {
@@ -258,8 +271,8 @@ async function analyseStemChords(data: StemChordRequest, identity: object) {
   // The last partial second, so the caller's bar reaches the end rather than
   // stopping short while the Viterbi decode below runs.
   self.postMessage({ type: "chords/progress", ...identity, frames });
-  const decoded = detectChords(chroma.frames, chroma.hopSeconds, data.boundaries, chroma.tuning.trust);
-  self.postMessage({ type: "chords/complete", ...identity, segments: decoded.segments, key: keyName(decoded.key) });
+  const decoded = await decodeChordsFrom(chroma, data.boundaries);
+  self.postMessage({ type: "chords/complete", ...identity, segments: decoded.segments, key: keyName(decoded.key), algorithm: decoded.learned ? "atarang-crema/2-stems" : "atarang-chroma/3-stems" });
 }
 
 self.onmessage = async ({ data }: MessageEvent<WaveformRequest | StemChordRequest>) => {
