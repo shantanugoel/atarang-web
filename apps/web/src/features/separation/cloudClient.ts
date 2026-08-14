@@ -10,19 +10,21 @@ export interface CloudConfiguration{origin:string;deploymentKey:string}
 export interface CloudProgress{stage:string;progress:number;uploadedBytes:number;totalBytes:number}
 interface ErrorEnvelope{error?:{code?:string}}
 
-const CONFIG_KEY="atarang.cloud.configuration";
-// An origin entered in Settings always wins; otherwise the one detection found
-// is used, so a deployment whose own origin serves the API needs no setup at
-// all. The deployment key is a secret and stays session-only either way.
+const KEY_STORAGE="atarang.cloud.deploymentKey";
+// The address is not the reader's to supply — detection finds it — so the key
+// is the only thing kept. It lives in localStorage rather than sessionStorage
+// so that closing the tab does not mean typing it again; it is still never
+// written into a backup, and Settings can forget it on request.
 export function getCloudConfiguration():CloudConfiguration|null{
-  let session:Partial<CloudConfiguration>|null=null;
-  try{session=JSON.parse(sessionStorage.getItem(CONFIG_KEY)??"null") as Partial<CloudConfiguration>|null}catch{session=null}
-  const origin=session?.origin||detectedCloudOrigin();
-  const deploymentKey=session?.deploymentKey??"";
-  if(!origin||!deploymentKey)return null;
-  try{return{origin:new URL(origin).origin,deploymentKey}}catch{return null}
+  const origin=detectedCloudOrigin();
+  if(!origin)return null;
+  let deploymentKey="";
+  try{deploymentKey=localStorage.getItem(KEY_STORAGE)??""}catch{return null}
+  return deploymentKey?{origin,deploymentKey}:null;
 }
-export function setCloudConfiguration(value:CloudConfiguration|null){if(value)sessionStorage.setItem(CONFIG_KEY,JSON.stringify({origin:new URL(value.origin).origin,deploymentKey:value.deploymentKey}));else sessionStorage.removeItem(CONFIG_KEY)}
+// Storage throws where a browser blocks it outright; then the key simply is not
+// remembered, which is a worse session but not a broken one.
+export function setCloudDeploymentKey(value:string|null){try{if(value)localStorage.setItem(KEY_STORAGE,value);else localStorage.removeItem(KEY_STORAGE)}catch{/* not remembered */}}
 
 async function checked(response:Response){if(response.ok)return response;let code=response.status===401?"invalid_deployment_key":`http_${response.status}`;try{const body=await response.json() as ErrorEnvelope;code=response.status===401?"invalid_deployment_key":body.error?.code??code}catch{/* stable fallback */}throw new Error(code)}
 async function sha256(blob:Blob){const digest=new IncrementalSha256(),reader=blob.stream().getReader();while(true){const{done,value}=await reader.read();if(done)break;digest.update(value)}return digest.digestHex()}

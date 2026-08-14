@@ -1,11 +1,5 @@
 import { useEffect, useState } from "react";
-
-// The backend this build looks for when the page's own origin does not serve
-// the API. Not a secret and not a build flag — it is a hostname, and whether it
-// answers is the whole detection. A LAN-only deployment resolves publicly but
-// routes nowhere off the LAN, so one static bundle offers cloud to the operator
-// and hides it from everyone else. Empty means "only ever the page's origin".
-export const DEFAULT_BACKEND_ORIGIN = "";
+import { backendOrigin } from "../../generated/cloud-config";
 
 // Long enough for a LAN round trip, short enough that a hostname routing
 // nowhere does not hold the cloud surfaces on "Checking…" while someone reads.
@@ -46,7 +40,7 @@ let probe: Promise<CloudAvailability> | null = null;
 export const detectedCloudOrigin = () => detected;
 
 function cloudAvailability(): Promise<CloudAvailability> {
-  probe ??= detectCloudOrigin([location.origin, DEFAULT_BACKEND_ORIGIN].filter((origin) => origin !== ""))
+  probe ??= detectCloudOrigin([location.origin, backendOrigin].filter((origin) => origin !== ""))
     .then((origin) => { detected = origin; return origin ? "found" : "none"; });
   return probe;
 }
