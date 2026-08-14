@@ -21,7 +21,10 @@ uploaded unless you ask for it.
   (triads, open shapes, power chords), ChordPro import/paste, and your own edits
   saved as a separate chart.
 - **Lyrics** — LRCLIB search, LRC import/export, manual writing, synced view, and
-  a combined lyrics + chords view.
+  a combined lyrics + chords view that puts each chord over the word it lands on.
+
+![Lyrics and chords](screenshots/lyrics-chords.png)
+
 - **Recording** — record takes over the mix and keep them in the Library.
 - **Library** — local import, per-category storage totals, backup and restore,
   and YouTube fetching when a backend is configured.
