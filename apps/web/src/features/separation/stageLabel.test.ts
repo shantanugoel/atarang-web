@@ -1,5 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { cloudErrorMessage } from "./stageLabel";
+import { cloudErrorMessage, separationEstimate } from "./stageLabel";
+
+describe("separation estimate", () => {
+  // A real-time factor is what the benchmark records and the last thing anyone
+  // choosing between this device and a server wants to read.
+  test("states a real-time factor as the time a song would take", () => {
+    expect(separationEstimate(0.75)).toBe("about 3 minutes for a 4-minute song");
+    expect(separationEstimate(3)).toBe("about 12 minutes for a 4-minute song");
+  });
+  test("counts one minute in the singular", () => expect(separationEstimate(0.25)).toBe("about 1 minute for a 4-minute song"));
+  // "about 0 minutes" is not a duration anyone recognises.
+  test("says under a minute rather than rounding to none", () => expect(separationEstimate(0.05)).toBe("under a minute for a 4-minute song"));
+});
 
 describe("cloud error messages", () => {
   test("never repeats a raw exception message back to the user", () => {

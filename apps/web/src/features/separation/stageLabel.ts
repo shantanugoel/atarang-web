@@ -16,6 +16,20 @@ const STAGE_LABELS: Record<string, string> = {
 
 export const stageLabel = (stage: string) => STAGE_LABELS[stage] ?? stage.replaceAll("_", " ");
 
+/**
+ * How long separation would take, said in minutes rather than in RTF.
+ *
+ * The benchmark measures a real-time factor — processing time over audio
+ * length — which is the right number to record and the wrong one to print.
+ * Nobody deciding between this device and a server wants to divide 0.75 into
+ * their song; they want to know it is about three minutes.
+ */
+const SONG_MINUTES = 4;
+export const separationEstimate = (rtf: number) => {
+  const minutes = Math.round(rtf * SONG_MINUTES);
+  return `${minutes < 1 ? "under a minute" : `about ${minutes} minute${minutes === 1 ? "" : "s"}`} for a ${SONG_MINUTES}-minute song`;
+};
+
 const CLOUD_ERRORS: Record<string, string> = {
   invalid_deployment_key: "The deployment key was rejected. Check the DEPLOYMENT_KEY configured on that server.",
   invalid_source: "The audio for this song could not be read from browser storage, so nothing was uploaded.",

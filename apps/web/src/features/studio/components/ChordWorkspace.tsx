@@ -464,7 +464,7 @@ export function ChordWorkspace({
         <div className={styles.detected}>
           <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} display={settings} follow onChordSelect={setSelectedChord} />
           <div className={styles.detectedActions}>
-            <p>Detected chords stay aligned to source time. Click any segment to seek; editing saves a separate chart.</p>
+            <p>Detected chords stay in time with the song. Click any chord to jump there; editing saves a separate chart.</p>
             {importButton}
             {pasteTrigger}
           </div>
