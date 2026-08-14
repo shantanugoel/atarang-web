@@ -19,3 +19,12 @@
 .demoRow{background:linear-gradient(90deg,var(--accent-wash),transparent)}.demoRow .song strong small{display:inline-block;margin-left:6px;padding:2px 5px;border-radius:3px;background:var(--accent);color:white;font:8px var(--font-mono);letter-spacing:.08em}.demoRow .rowActions button{width:auto;padding:0 9px;border:1px solid var(--accent);color:var(--accent-soft);font-size:10px;font-weight:700}.demoRow .rowActions button:hover{background:var(--accent-wash);color:white}.takeArt{color:var(--danger);background:rgba(255,84,95,.12)}
 @media(max-width:760px){.demoRow .rowActions button{height:auto;padding:0;border:0;font-size:inherit}.demoRow .rowActions button:hover{background:transparent;color:var(--accent-soft)}}
 @media(max-width:760px){.categories{overflow-x:auto}.categories button{min-width:116px}}
+
+/* A song whose audio the browser reclaimed. The row stays — its lyrics, charts
+   and practice are still there — but nothing may read as ready. */
+.assetMissing{color:var(--danger)}.assetMissing svg{color:var(--danger)}
+.rowActions button.reimport{width:auto;padding:0 9px;border:1px solid var(--accent);color:var(--accent-soft);font-size:10px;font-weight:700}.rowActions button.reimport:hover{background:var(--accent-wash);color:white}
+/* Narrow rows drop every column after the title, which would hide the one
+   thing this row exists to say. The warning comes back; the badges that only
+   report good news stay hidden. */
+@media(max-width:760px){.rowActions button.reimport{height:auto;padding:0;border:0;font-size:inherit}.rowActions button.reimport:hover{background:transparent;color:var(--accent-soft)}.row>span.assetMissing{display:flex;padding-left:88px}}

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { matchPath, useLocation } from "react-router";
 import type { OriginalRecord, SeparationRecord, WaveformRecord } from "../../storage/database";
-import { getOriginal } from "../../storage/repositories";
+import { getOriginal, subscribeLibrary } from "../../storage/repositories";
 import { useSeparation } from "../separation/useSeparation";
 import { useBeatGrid } from "./useBeatGrid";
 import { useDemoAudio } from "./useDemoAudio";
@@ -84,7 +84,21 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   usePracticePersistence(original ?? undefined, playback.currentTimeUs, playback.playing, playback.ready, playback.seekTo);
 
   useEffect(() => { if (routeSongId !== undefined) { setStudioOpened(true); useStudioStore.getState().openSong(routeSongId); } }, [routeSongId]);
-  useEffect(() => { let active = true; setStarted(false); if (!songId) { setOriginal(null); return; } setOriginal(undefined); void getOriginal(songId).then((record) => { if (active) setOriginal(record ?? null); }); return () => { active = false; }; }, [songId]);
+  // Re-read on library changes, not only when the song id changes: recovering a
+  // song whose audio the browser reclaimed rewrites this record while the id
+  // stays the same, and without this the session keeps serving the broken copy
+  // until a reload. Identity is held steady unless the record really changed —
+  // a new object here rebuilds the audio element and restarts the song, and
+  // saving lyrics or a waveform notifies the same listeners mid-playback.
+  useEffect(() => {
+    let active = true; setStarted(false);
+    if (!songId) { setOriginal(null); return; }
+    setOriginal(undefined);
+    const load = () => getOriginal(songId).then((record) => { if (active) setOriginal((current) => current && record && current.updatedAt === record.updatedAt ? current : record ?? null); });
+    void load();
+    const unsubscribe = subscribeLibrary(() => void load());
+    return () => { active = false; unsubscribe(); };
+  }, [songId]);
   useEffect(() => { if (playback.playing) setStarted(true); }, [playback.playing]);
   // The worklet counts the repetitions, so the ramp reacts to a pass actually
   // finishing rather than to a timer. A seek resets the count, which is a

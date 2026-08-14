@@ -82,6 +82,36 @@ export async function libraryCategoryUsage() {
   return {originals:total(originals.map(record=>record.blobId)),separated:total(separations.flatMap(record=>Object.values(record.bindings))),performances:total(performances.flatMap(record=>[record.manifest.mic.blobId,record.manifest.backing.blobId]))};
 }
 
+// The integrity sweep drops the blob record when the browser has reclaimed its
+// OPFS file, so a song with no blob is a song with no audio. Everything that
+// offers a song as playable asks this rather than trusting the row.
+export async function missingAudioOriginalIds(){const db=await database,[originals,blobs]=await Promise.all([db.getAll("originals"),db.getAll("blobs")]),present=new Set(blobs.map(blob=>blob.id));return new Set(originals.filter(record=>!present.has(record.blobId)).map(record=>record.id))}
+
+/**
+ * Puts a reclaimed song's audio back under the row the user's work hangs off.
+ *
+ * Lyrics, charts, practice position and analysis are all keyed by the original's
+ * id, and a re-import writes the recovered bytes under a fresh row instead. So
+ * the second row is folded into the first rather than left as a duplicate the
+ * user has to reconcile by hand. Only the same recording qualifies: a different
+ * file would leave every lyric line and beat marker pointing at the wrong audio.
+ */
+export async function healMissingAudio(originalId:string,replacement:OriginalRecord){
+  const db=await database,broken=await db.get("originals",originalId);
+  if(!broken||broken.id===replacement.id||broken.contentSha256!==replacement.contentSha256)return false;
+  const transaction=db.transaction(["originals","blobs"],"readwrite"),now=new Date().toISOString();
+  await transaction.objectStore("originals").put({...broken,blobId:replacement.blobId,updatedAt:now});
+  await transaction.objectStore("originals").delete(replacement.id);
+  // The import counted a reference for a row that is about to go. The blob stays:
+  // it is the audio the surviving row now points at.
+  const blob=await transaction.objectStore("blobs").get(replacement.blobId);
+  if(blob&&blob.referenceCount>1)await transaction.objectStore("blobs").put({...blob,referenceCount:blob.referenceCount-1,updatedAt:now});
+  await transaction.done;
+  await db.delete("quarantine",`blob:${replacement.blobId}:missing_blob`);
+  notify();
+  return true;
+}
+
 export async function listAnalyzedOriginalIds(){const db=await database,[waveforms,beats,chords]=await Promise.all([db.getAll("waveforms"),db.getAll("beats"),db.getAll("chordAnalyses")]);return new Set([...waveforms.map(record=>record.originalId),...beats.map(record=>record.originalId),...chords.map(record=>record.originalId)])}
 
 export async function removeOriginal(id: string) {

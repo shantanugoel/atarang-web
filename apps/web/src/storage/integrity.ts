@@ -11,6 +11,7 @@ import {
 } from "@atarang/contracts";
 import { database, type QuarantineRecord } from "./database";
 import { fileForOpfsPath, removeOpfsDirectory } from "./opfs";
+import { notifyLibraryChanged } from "./repositories";
 
 let running: Promise<void> | null = null;
 
@@ -56,11 +57,19 @@ async function scan() {
     await quarantine("operation", operation.id, "stale_staging_recovered", true);
   }
 
+  // IndexedDB and OPFS are evicted independently when the origin is not
+  // persisted, so a record can outlive its bytes. Left in place it is a promise
+  // of audio nobody can play: the song stays listed as ready, the storage
+  // readout counts megabytes that are gone, and the player reports a decode
+  // failure for a file that is not there. Dropping the record is not data loss —
+  // the data is already lost — and it is what makes every reader below tell the
+  // truth. The song, its lyrics, charts and analysis stay; only the pointer goes.
   for (const blob of await db.getAll("blobs")) {
     try {
       const file = await fileForOpfsPath(blob.opfsPath);
       if (file.size !== blob.byteLength) await quarantine("blob", blob.id, "byte_length_mismatch", false);
     } catch {
+      await db.delete("blobs", blob.id);
       await quarantine("blob", blob.id, "missing_blob", false);
     }
   }
@@ -127,6 +136,9 @@ async function scan() {
       await quarantine("record", record.id, "invalid_performance", true);
     }
   }
+  // The sweep runs while the Library is already on screen, so whatever it
+  // reconciled has to reach the list that is reading the old answer.
+  notifyLibraryChanged();
 }
 
 export function runIntegrityScan() {

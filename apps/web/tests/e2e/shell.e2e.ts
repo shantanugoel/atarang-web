@@ -559,3 +559,47 @@ test("a named passage is saved from the loop and restores it later",async({page,
   await page.getByRole("button",{name:"Delete section Chorus"}).click();
   await expect(section).toBeHidden();
 });
+
+// IndexedDB and OPFS are reclaimed independently on a non-persisted origin, so
+// the record outlives its audio: the song stays in the Library, the waveform
+// still draws from its own cached record, and the player used to blame the
+// browser's decoder for a file that was simply gone.
+test("a song whose audio the browser reclaimed says so and can be re-imported",async({page,isMobile})=>{
+  const source={name:"Reclaimed Take.wav",mimeType:"audio/wav",buffer:silentWav(44_100*5)};
+  await page.goto("/library");
+  await page.getByLabel("Choose audio to import").setInputFiles(source);
+  await page.getByRole("button",{name:"Skip for now and just play the song"}).click();
+  const songId=new URL(page.url()).pathname.split("/").pop()!;
+  await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
+  await page.evaluate(async()=>{const root=await navigator.storage.getDirectory();const names:string[]=[];for await(const name of (root as unknown as{keys():AsyncIterable<string>}).keys())names.push(name);for(const name of names)await root.removeEntry(name,{recursive:true})});
+
+  await page.goto(`/studio/${songId}`);
+  await expect(page.getByText(/audio is no longer on this device/)).toBeVisible();
+  await expect(page.getByText("could not be decoded")).toBeHidden();
+  // Nothing pretends to be seekable, and the readout keeps the song's own
+  // length rather than falling back to the transport's placeholder minutes.
+  for(const name of isMobile?["Play","Rewind 10 seconds"]:["Play","Skip to start","Rewind 10 seconds","Skip to end"])await expect(page.getByRole("button",{name,exact:true})).toBeDisabled();
+  const transport=page.getByRole("region",{name:"Waveform and transport"});
+  await expect(transport).toContainText("0:05");
+  expect(await transport.getAttribute("data-source-time-us")).toBe("0");
+
+  // The storage prompt stops warning about a risk and reports the loss.
+  await expect(page.getByText(/already deleted audio from your library/)).toBeVisible();
+
+  await page.getByRole("link",{name:"Library"}).click();
+  const row=page.locator("div").filter({hasText:"Reclaimed Take"}).last();
+  await expect(page.getByText("Audio missing",{exact:true})).toBeVisible();
+  if(!isMobile)await expect(row.getByRole("button",{name:"Preview Reclaimed Take"})).toHaveCount(0);
+  await expect(page.getByRole("link",{name:"Separate",exact:true})).toHaveCount(0);
+
+  // Re-importing the source folds the recovered audio back onto the same song,
+  // rather than leaving a broken row beside a healthy duplicate.
+  await page.getByRole("button",{name:"Re-import",exact:true}).click();
+  await page.getByLabel("Choose the source file to re-import").setInputFiles(source);
+  await expect(page).toHaveURL(new RegExp(`/studio/${songId}$`));
+  await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
+  await expect(page.getByText(/already deleted audio from your library/)).toBeHidden();
+  await page.getByRole("link",{name:"Library"}).click();
+  await expect(page.getByText("Audio missing",{exact:true})).toBeHidden();
+  await expect(page.getByText("Reclaimed Take")).toHaveCount(1);
+});

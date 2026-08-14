@@ -1,12 +1,17 @@
 import { DownloadSimple, ShieldWarning, X } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useModelManager } from "../features/separation/useModelManager";
+import { missingAudioOriginalIds, subscribeLibrary } from "../storage/repositories";
 import styles from "./StorageNotice.module.css";
 
 // This renders inside the root layout, and reading sessionStorage throws where
 // storage is blocked for the origin. A reassurance banner must not be able to
 // take the whole application down.
-const dismissedForSession = { get: () => { try { return sessionStorage.getItem("atarang.storage.notice") === "1"; } catch { return false; } }, set: () => { try { sessionStorage.setItem("atarang.storage.notice", "1"); } catch { /* Then it comes back on the next page. */ } } };
+//
+// The dismissal remembers *which* warning was put away, so the day a song's
+// audio actually goes missing the notice comes back once: a risk that has
+// already cost the user something is not the warning they dismissed.
+const dismissedForSession = { get: () => { try { return sessionStorage.getItem("atarang.storage.notice") ?? ""; } catch { return ""; } }, set: (value: string) => { try { sessionStorage.setItem("atarang.storage.notice", value); } catch { /* Then it comes back on the next page. */ } } };
 
 /**
  * Says out loud that the browser can reclaim the library.
@@ -21,24 +26,32 @@ export function StorageNotice() {
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [declined, setDeclined] = useState(false);
   const [dismissed, setDismissed] = useState(dismissedForSession.get);
+  const [lost, setLost] = useState(false);
   const { evicted, manifest, progress, download } = useModelManager();
 
   useEffect(() => { void (navigator.storage?.persisted?.() ?? Promise.resolve(true)).then(setPersisted, () => setPersisted(true)); }, []);
+  // Songs that have lost their audio right now, not a quarantine note saying it
+  // happened once: recovering or removing the last affected song has to be able
+  // to put this warning away, or it nags about a problem the user has fixed.
+  useEffect(() => { const check = () => void missingAudioOriginalIds().then((ids) => setLost(ids.size > 0), () => undefined); check(); return subscribeLibrary(check); }, []);
 
-  // Granted, still checking, or put away for this session. Nothing to say.
-  if (persisted !== false || dismissed) return null;
+  const notice = lost ? "lost" : "risk";
+  // Granted, still checking, or this exact warning put away for the session.
+  if (persisted !== false || dismissed === notice) return null;
 
   const request = async () => {
     const granted = await navigator.storage.persist();
     setPersisted(granted);
     setDeclined(!granted);
   };
-  const dismiss = () => { dismissedForSession.set(); setDismissed(true); };
+  const dismiss = () => { dismissedForSession.set(notice); setDismissed(notice); };
 
-  return <div className={styles.notice} role="status">
+  return <div className={styles.notice} role={lost ? "alert" : "status"}>
     <ShieldWarning aria-hidden />
     <p>
-      {evicted
+      {lost
+        ? <><b>This browser has already deleted audio from your library.</b> The affected songs are marked “Audio missing” in your Library; re-import the source file from your computer to play one again. Their lyrics, charts and practice settings are untouched.</>
+        : evicted
         ? <><b>The separation model was reclaimed by this browser.</b> Storage here is not persistent, so songs, stems and takes can go the same way.</>
         : <><b>This browser can reclaim Atarang's storage.</b> Songs, stems and recorded takes live on this device only, and are deleted without warning when space runs low.</>}
       {declined && <> Your browser declined the request — it usually grants persistence once a site is bookmarked, installed, or used regularly. Until then, keep a backup.</>}

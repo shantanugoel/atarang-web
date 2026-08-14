@@ -23,12 +23,23 @@ export interface ImportedPlayback {
   seekTo(seconds: number): void;
 }
 
+// A decode failure and a file the browser has thrown away are the same silence
+// to the user, and only one of them has a way out. Saying "could not be decoded"
+// for audio that is simply not there sends people to re-separate a song that
+// needs re-importing.
+const AUDIO_RECLAIMED ="This song’s audio is no longer on this device — the browser reclaimed the space. Re-import the source file from your Library to play it again.";
+
 export function useImportedAudio(original?: OriginalRecord, speed = 1, volume = 1): ImportedPlayback {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [state, setState] = useState({ ready: false, playing: false, currentTimeUs: 0, durationUs: original?.durationUs ?? 0, error: "" });
 
   useEffect(() => {
     if (!original) { audioRef.current = null; setState({ ready: false, playing: false, currentTimeUs: 0, durationUs: 0, error: "" }); return; }
+    // The record's own duration, until the element reports the decoded one. It
+    // is right often enough to matter when the element never loads at all: with
+    // zero here the transport falls back to its placeholder length and draws a
+    // playhead against a song that does not exist.
+    setState({ ready: false, playing: false, currentTimeUs: 0, durationUs: original.durationUs, error: "" });
     let cancelled = false;
     let objectUrl = "";
     const audio = new Audio();
@@ -39,23 +50,26 @@ export function useImportedAudio(original?: OriginalRecord, speed = 1, volume = 
     audioRef.current = audio;
     const update = () => setState((current) => ({ ...current, playing: !audio.paused, currentTimeUs: Math.round(audio.currentTime * 1_000_000), durationUs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000_000) : original.durationUs }));
     const ready = () => setState((current) => ({ ...current, ready: true, error: "" }));
-    const failed = () => setState((current) => ({ ...current, ready: false, playing: false, error: "This stored audio could not be decoded by this browser." }));
+    const failed = (message: string) => setState((current) => ({ ...current, ready: false, playing: false, error: message }));
+    const decodeFailed = () => failed("This stored audio could not be decoded by this browser.");
     for (const event of ["timeupdate", "play", "pause", "ended", "durationchange"]) audio.addEventListener(event, update);
-    audio.addEventListener("canplay", ready); audio.addEventListener("error", failed);
+    audio.addEventListener("canplay", ready); audio.addEventListener("error", decodeFailed);
     void (async () => {
       const blob = await getBlob(original.blobId);
-      if (!blob) throw new Error("result_integrity_failed");
-      const file = await fileForOpfsPath(blob.opfsPath);
+      // No record, or a record pointing at a file OPFS no longer has: both mean
+      // the bytes are gone, whether or not the integrity sweep has run yet.
+      const file = blob && await fileForOpfsPath(blob.opfsPath).catch(() => undefined);
       if (cancelled) return;
+      if (!file) { failed(AUDIO_RECLAIMED); return; }
       objectUrl = URL.createObjectURL(file);
       audio.src = objectUrl;
       audio.load();
-    })().catch(failed);
+    })().catch(decodeFailed);
     return () => {
       cancelled = true; audio.pause(); audio.removeAttribute("src"); audio.load();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       for (const event of ["timeupdate", "play", "pause", "ended", "durationchange"]) audio.removeEventListener(event, update);
-      audio.removeEventListener("canplay", ready); audio.removeEventListener("error", failed);
+      audio.removeEventListener("canplay", ready); audio.removeEventListener("error", decodeFailed);
       if (audioRef.current === audio) audioRef.current = null;
     };
   }, [original]);
