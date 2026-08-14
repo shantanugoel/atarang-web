@@ -31,6 +31,17 @@ const QUALITY_ALIASES = new Map<string, string>([
   ["sus4", "sus4"], ["sus", "sus4"],
   ["dim", "dim"], ["o", "dim"], ["°", "dim"],
   ["5", "5"], ["no3", "5"],
+  // The qualities the trained head can name that the templates never could.
+  // Without these the detector prints a chord the catalogue draws nothing for,
+  // which reads as the diagram being broken rather than the chord being rare.
+  ["aug", "aug"], ["+", "aug"], ["#5", "aug"],
+  ["6", "6"], ["maj6", "6"], ["M6", "6"],
+  ["m6", "m6"], ["min6", "m6"],
+  ["dim7", "dim7"], ["o7", "dim7"], ["°7", "dim7"],
+  ["m7b5", "m7b5"], ["hdim7", "m7b5"], ["min7b5", "m7b5"], ["m7-5", "m7b5"], ["ø", "m7b5"], ["ø7", "m7b5"],
+  // `parseChord` rewrites a leading "min", so "minmaj7" arrives here as "mmaj7".
+  ["mMaj7", "mMaj7"], ["mmaj7", "mMaj7"], ["mM7", "mMaj7"], ["m(maj7)", "mMaj7"],
+  ["sus2", "sus2"], ["2", "sus2"],
 ]);
 
 /** Normalises a written quality to the catalogue's key, or null if unsupported. */
@@ -78,6 +89,28 @@ const OPEN = new Map<string, (number | null)[]>([
   [key(4, "5"), [0, 2, 2, null, null, null]],
   [key(9, "5"), [null, 0, 2, 2, null, null]],
   [key(2, "5"), [null, null, 0, 2, 3, null]],
+
+  [key(2, "sus2"), [null, null, 0, 2, 3, 0]],
+  [key(9, "sus2"), [null, 0, 2, 2, 0, 0]],
+
+  // The movable forms below are offsets from a shape rooted on E or on A, so
+  // the chord at the offset of zero — the E-rooted and A-rooted one — has to be
+  // here or it has no shape at all. That was already true of dim, which drew
+  // nothing for A dim until these were added.
+  [key(4, "dim"), [0, 1, 2, 0, null, null]],
+  [key(9, "dim"), [null, 0, 1, 2, 1, null]],
+  [key(4, "aug"), [0, 3, 2, 1, 1, 0]],
+  [key(9, "aug"), [null, 0, 3, 2, 2, 1]],
+  [key(4, "6"), [0, 2, 2, 1, 2, 0]],
+  [key(9, "6"), [null, 0, 2, 2, 2, 2]],
+  [key(4, "m6"), [0, 2, 2, 0, 2, 0]],
+  [key(9, "m6"), [null, 0, 2, 2, 1, 2]],
+  [key(4, "dim7"), [0, 1, 2, 0, 2, null]],
+  [key(9, "dim7"), [null, 0, 1, 2, 1, 2]],
+  [key(4, "m7b5"), [0, 1, 2, 0, 3, null]],
+  [key(9, "m7b5"), [null, 0, 1, 0, 1, null]],
+  [key(4, "mMaj7"), [0, 2, 1, 0, 0, 0]],
+  [key(9, "mMaj7"), [null, 0, 2, 1, 1, 0]],
 ]);
 
 interface MovableForm { openRoot: number; frets: (number | null)[]; rootString: string }
@@ -92,6 +125,16 @@ const SIXTH_STRING: Record<string, MovableForm> = {
   maj7: { openRoot: 4, frets: [0, 2, 1, 1, 0, 0], rootString: "6th string" },
   sus4: { openRoot: 4, frets: [0, 2, 2, 2, 0, 0], rootString: "6th string" },
   "5": { openRoot: 4, frets: [0, 2, 2, null, null, null], rootString: "6th string" },
+  dim: { openRoot: 4, frets: [0, 1, 2, 0, null, null], rootString: "6th string" },
+  aug: { openRoot: 4, frets: [0, 3, 2, 1, 1, 0], rootString: "6th string" },
+  "6": { openRoot: 4, frets: [0, 2, 2, 1, 2, 0], rootString: "6th string" },
+  m6: { openRoot: 4, frets: [0, 2, 2, 0, 2, 0], rootString: "6th string" },
+  dim7: { openRoot: 4, frets: [0, 1, 2, 0, 2, null], rootString: "6th string" },
+  m7b5: { openRoot: 4, frets: [0, 1, 2, 0, 3, null], rootString: "6th string" },
+  mMaj7: { openRoot: 4, frets: [0, 2, 1, 0, 0, 0], rootString: "6th string" },
+  // Four frets across, so it is a stretch rather than a barre — but it is the
+  // shape a guitarist actually makes for a sus2 with the root on the sixth.
+  sus2: { openRoot: 4, frets: [0, 2, 4, 4, null, null], rootString: "6th string" },
 };
 
 const FIFTH_STRING: Record<string, MovableForm> = {
@@ -103,6 +146,13 @@ const FIFTH_STRING: Record<string, MovableForm> = {
   sus4: { openRoot: 9, frets: [null, 0, 2, 2, 3, 0], rootString: "5th string" },
   dim: { openRoot: 9, frets: [null, 0, 1, 2, 1, null], rootString: "5th string" },
   "5": { openRoot: 9, frets: [null, 0, 2, 2, null, null], rootString: "5th string" },
+  aug: { openRoot: 9, frets: [null, 0, 3, 2, 2, 1], rootString: "5th string" },
+  "6": { openRoot: 9, frets: [null, 0, 2, 2, 2, 2], rootString: "5th string" },
+  m6: { openRoot: 9, frets: [null, 0, 2, 2, 1, 2], rootString: "5th string" },
+  dim7: { openRoot: 9, frets: [null, 0, 1, 2, 1, 2], rootString: "5th string" },
+  m7b5: { openRoot: 9, frets: [null, 0, 1, 0, 1, null], rootString: "5th string" },
+  mMaj7: { openRoot: 9, frets: [null, 0, 2, 1, 1, 0], rootString: "5th string" },
+  sus2: { openRoot: 9, frets: [null, 0, 2, 2, 0, 0], rootString: "5th string" },
 };
 
 /** Lower is easier: open strings are free, barres and high frets are not. */
