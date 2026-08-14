@@ -1,20 +1,172 @@
-# Atarang Web
+# Atarang
 
-Desktop-first, local-first music practice PWA. The repository follows the architecture and phased gates in `IMPLEMENTATION_PLAN.md`.
+Separate a song into stems, mix them the way you need, and practise against them —
+in the browser. Songs, stems, takes and settings stay on your device; nothing is
+uploaded unless you ask for it.
+
+![Studio](screenshots/studio.png)
+
+## What it does
+
+- **Four-stem separation** — vocals, drums, bass, other. Runs in the browser on a
+  downloaded 126 MB model (WebGPU, CPU fallback), on a server you host, or by
+  importing stems made elsewhere.
+- **Mixer** — per-stem level, pan, solo, mute, master out, and presets (Balanced,
+  Learn, Guide, Play along).
+- **Practice** — speed and pitch independently, A/B loop with named sections,
+  repetitions, pause between reps, speed ramp, tempo, tap tempo, metronome,
+  count-in.
+- **Chords** — detected with a learned model over the separated stems, with
+  current/next chord shapes, transpose, capo, four simplification levels
+  (triads, open shapes, power chords), ChordPro import/paste, and your own edits
+  saved as a separate chart.
+- **Lyrics** — LRCLIB search, LRC import/export, manual writing, synced view, and
+  a combined lyrics + chords view.
+- **Recording** — record takes over the mix and keep them in the Library.
+- **Library** — local import, per-category storage totals, backup and restore,
+  and YouTube fetching when a backend is configured.
+
+| Library | Separation | Settings |
+|---|---|---|
+| ![Library](screenshots/library.png) | ![Separate](screenshots/separate.png) | ![Settings](screenshots/settings.png) |
+
+## Run it locally
 
 ```sh
 bun install
-bun run dev            # cross-origin isolated on :3000, rebuilds on save
-bun run typecheck
-bun test
-bun run build
-bun run preview
+bun models/web/download.ts   # once, stages the browser separation model
+bun run dev                  # http://localhost:3000, rebuilds on save (reload the tab)
 ```
 
-Both `dev` and `preview` send the COOP/COEP headers that `SharedArrayBuffer` requires; without them separation, four-stem playback, metronome, count-in and recording all refuse to start. `dev` binds `0.0.0.0:3000` and rebuilds on save (reload the tab); `preview` binds `0.0.0.0:4173`.
+`bun run typecheck`, `bun test`, `bun run test:e2e` for the gates. `bun run build`
+emits a purely static `apps/web/dist`; `bun run preview` serves it on `:4173`.
 
-Browser separation needs the model weights. Run `bun models/web/download.ts` once — the build stages `model-files/` into `dist/models/htdemucs-web-onnx/` so `dev` and `preview` serve the same paths the container image publishes.
+Both `dev` and `preview` send the COOP/COEP headers `SharedArrayBuffer` needs.
+**Without them, `crossOriginIsolated` is false and separation, four-stem playback,
+metronome, count-in and recording all refuse to start.**
 
-Cloud deployment source lives under `services/api`, `services/worker`, and `infra/compose`. It requires a generated, committed `uv.lock`, a checksum-pinned `models/server/htdemucs.th` build input, and target-hardware benchmark evidence before use. See `docs/CLOUD_OPERATIONS.md`.
+## Deploy: frontend only (static)
 
-After API contract changes, regenerate the committed OpenAPI snapshot with `uv run --package atarang-api python services/api/scripts/export_openapi.py`; CI should fail if regeneration produces a diff.
+The build is just files. Everything except cloud separation and YouTube fetching
+works with no server at all.
+
+```sh
+bun models/web/download.ts   # or the deployment has no browser separation
+bun run build                # apps/web/dist
+```
+
+`build.ts` writes `dist/_headers` with the cross-origin isolation headers, the CSP
+and immutable caching. Any host that reads `_headers` (Cloudflare Pages/Workers,
+Netlify) works as-is; on any other host, configure it to send the same headers —
+`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy:
+require-corp` are not optional. Serve unmatched paths with `index.html`.
+
+**Cloudflare Workers:** `bun run cfdeploy` (build + `wrangler deploy`).
+`wrangler.jsonc` declares assets only — no Worker script, because static asset
+requests are unmetered while Worker invocations are billed and start answering
+429, which here would mean model weights failing to download.
+
+**Without a backend**, cloud separation and YouTube fetching do not disappear: the
+separation sheet, the Library YouTube card and Settings each explain the feature
+needs a self-hosted server and link the repository.
+
+## Deploy: frontend + backend
+
+The app is not told whether it has a backend — it finds out by probing
+`/api/v1/capabilities` on its own origin and on the address baked into the build,
+and taking whichever answers.
+
+1. Point the build at your API (skip this if the API is proxied under the same
+   origin, as the Compose deployment does):
+   ```sh
+   ATARANG_BACKEND_URL=https://api.example.com bun run build
+   ```
+   It is a hostname, not a secret, and fills both the bundle and the CSP
+   `connect-src`. `ATARANG_BACKEND_URL=` (empty) restricts the app to its own
+   origin.
+2. Stand up the API — see below.
+3. In the app, Settings → Cloud processing: paste the deployment key. That is the
+   only thing entered by hand; it is a secret, so it is never in the bundle. It
+   is kept in `localStorage`, never written into a backup, and "Forget key"
+   removes it.
+
+For a cross-origin backend set the API's `ATARANG_PUBLIC_ORIGIN` to the frontend
+origin; it drives CORS, and a backend that will not accept this frontend's origin
+correctly fails the probe.
+
+### The backend (Docker Compose)
+
+Sources live in `services/api`, `services/worker`, `services/acquisition` and
+`infra/compose`.
+
+Before building:
+
+1. Generate `uv.lock` with Python 3.12 and uv; require `uv lock --check` in CI.
+2. Put the official `htdemucs` checkpoint at `models/server/htdemucs.th` and
+   supply its reviewed SHA-256 as both the image build argument and
+   `MODEL_ARTIFACT_SHA256`. The image build fails on a mismatch.
+3. `cd infra/compose && ./create-env.sh .env` (or fill `.env` from
+   `.env.example` with random secrets — do not commit it). `YOUTUBE_ENABLED=true`
+   only for an operator-approved deployment; the acquisition container pins
+   yt-dlp, runs Deno with restricted permissions, accepts only normalized YouTube
+   video URLs, and has separate egress.
+4. Benchmark on the real hardware. CPU is eligible at warm p95 RTF ≤ 1.5; CUDA at
+   p95 RTF ≤ 0.5, < 80% VRAM and zero OOM/device resets. Concurrency stays at one.
+
+Start it:
+
+```sh
+docker compose -f infra/compose/compose.yaml -f infra/compose/compose.cpu.yaml --profile cpu up -d --build
+```
+
+Swap in `compose.cuda.yaml` / `--profile cuda` for GPU. Only Caddy publishes a
+host port (`HOST_HTTP_PORT`, default 4173) and it reverse-proxies `/api/*`, so the
+same-origin probe succeeds with no `ATARANG_BACKEND_URL` at all; the default
+`SITE_ADDRESS=:80` expects TLS termination by an existing reverse proxy. Verify
+`/api/v1/health/ready`, `/api/v1/version`, an upload canary, result import and
+explicit result purge.
+
+Run `atarang-cleanup` hourly: incomplete uploads expire after 30 minutes,
+failed/cancelled sources within an hour, results after 24 hours. Successful
+YouTube acquisitions are content-addressed and kept for reuse; deleting a job
+never deletes that cache entry. `infra/backup/backup.sh` backs up PostgreSQL and
+resolved configuration, deliberately not the expiring job media — test restore
+weekly. Drain workers before rollback, roll back by immutable image digest only,
+and never across a destructive migration.
+`infra/release/release-images.sh` is the fail-closed promotion path (lock and
+checksum checks, web gates, SBOM/provenance, Cosign signing).
+
+> **This is a private, single-operator deployment.** A high-entropy deployment key
+> authorizes job creation; per-job capability tokens authorize job access. Public
+> multi-user operation would need identity and sessions, per-user job ownership,
+> rate limits, abuse controls, consent records, revocation, and a deliberate
+> policy for source-cache sharing. Do not expose it as one.
+
+## Browsers
+
+Current and previous stable desktop releases.
+
+| | Chrome / Edge | Firefox | Safari (macOS) |
+|---|---|---|---|
+| Library, practice, cloud separation | Yes | Yes | Yes |
+| Four-stem playback and recording | Yes | Yes (buffer-copy fallback allowed) | Yes |
+| Browser separation | After the device probe passes | Only if the WASM probe passes | Hidden |
+
+Mobile layouts support playback and review. Mobile recording and browser
+separation are not release promises.
+
+## Notable licenses
+
+MIT unless noted. Vendored Signalsmith Stretch (MIT) carries its notice in
+`apps/web/src/vendor/signalsmith-stretch/`; the bundled CREMA chord model is
+BSD-2-Clause with its notice in `models/chords/`; the separation weights are not
+bundled and are downloaded on request. Mediabunny is MPL-2.0 and, on the server
+side, MinIO is AGPL-3.0 — review both before redistributing an image.
+
+## Contributing
+
+Architecture and phased gates: `IMPLEMENTATION_PLAN.md`. Outstanding work and
+measured limits: `AUDIT.md`. After API contract changes, regenerate the committed
+OpenAPI snapshot with
+`uv run --package atarang-api python services/api/scripts/export_openapi.py`; CI
+fails if regeneration produces a diff.
