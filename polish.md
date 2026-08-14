@@ -33,12 +33,8 @@
       separation, YouTube fetching). One deployment target is Cloudflare Workers, but the
       requirement must not assume a specific host. Pin down: how the backend URL is
       configured (build-time vs runtime), and what the user experience is when the backend
-      is unreachable (the requirement, not the mechanism).
-   10. A build-time option that disables the cloud methods (cloud separation, YouTube
-       fetching). Instead of the features disappearing, the UI should explain they're only
-       available in self-hosted versions, not the public deployed app, and link to the
-       GitHub repo. Pin down: the exact copy for each affected surface (buttons, menus,
-       error states) and the required behavior when both this and item 9 apply.
+      is unreachable.
+   10. A run-time option or auto-detecion (or if nothing works, then build time option) that disables the cloud methods (cloud separation, YouTube fetching). Instead of the features disappearing, the UI should explain they're only available in self-hosted versions, not the public deployed app, and link to the GitHub repo. Pin down: the exact copy for each affected surface (buttons, menus, error states) and the required behavior when both this and item 9 apply.
    11. Improve the README drastically while keeping it compact and concise: what the app is,
        screenshots (to be collected), easy-to-scan layout, and very simple deployment steps
        for anyone self-hosting. Produce the outline and the exact list of screenshots with

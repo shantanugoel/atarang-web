@@ -6,6 +6,7 @@ import { getBlob, healMissingAudio, removeAnalysis, removeOriginal, removePerfor
 import { fileForOpfsPath } from "../../storage/opfs";
 import { importSeparationPackage } from "../separation/separationImporter";
 import { cloudCapabilities, getCloudConfiguration, runYouTubeSeparation, type CloudProgress } from "../separation/cloudClient";
+import { REPOSITORY, useCloudAvailability } from "../separation/cloudAvailability";
 import { cloudErrorMessage, stageLabel } from "../separation/stageLabel";
 import { useLibrary } from "./useLibrary";
 import styles from "./LibraryPage.module.css";
@@ -16,6 +17,11 @@ const formatDuration = (timeUs: number) => { const seconds = Math.round(timeUs /
 const formatBytes = (bytes: number) => bytes === 0 ? "0 KB" : bytes < 1_000_000 ? `${Math.max(1, Math.round(bytes / 1_000))} KB` : bytes < 1_000_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${(bytes / 1_000_000_000).toFixed(2)} GB`;
 const formatDate = (value: string) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
 const errorText: Record<string,string> = { unsupported_format: "This audio format is not supported by this browser.", media_too_large: "Choose audio under 20 minutes and 1 GB.", quota_exceeded: "Not enough browser storage is available for a safe import.", storage_unavailable: "Browser storage is unavailable. Your library was not changed." };
+
+// "unconfigured" means a server is there but has no key yet; "absent" means
+// this deployment has no server at all, which is a different sentence — one is
+// something to finish, the other is something to go and host.
+type YoutubeStatus = "checking" | "enabled" | "disabled" | "unreachable" | "rejected" | "failing" | "unconfigured" | "absent";
 
 export function LibraryPage() {
   const { songs, performances, usage, categoryUsage, loading } = useLibrary();
@@ -32,7 +38,8 @@ export function LibraryPage() {
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [youtubeProcessing, setYoutubeProcessing] = useState<"server"|"browser">("server");
-  const [youtubeEnabled, setYoutubeEnabled] = useState<boolean | null>(null);
+  const [youtubeStatus, setYoutubeStatus] = useState<YoutubeStatus>("checking");
+  const youtubeEnabled = youtubeStatus === "enabled";
   const [youtubeProgress, setYoutubeProgress] = useState<CloudProgress | null>(null);
   const youtubeController = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,18 +50,43 @@ export function LibraryPage() {
   const visibleSongs=filteredSongs.filter(song=>category!=="separated"||"separated" in song&&song.separated);
   const originalById=useMemo(()=>new Map(songs.map(song=>[song.id,song])),[songs]);
   const visiblePerformances=performances.filter(take=>{const song=originalById.get(take.originalId);return `${song?.title??""} ${song?.artist??""}`.toLowerCase().includes(query.toLowerCase())});
+  const availability = useCloudAvailability();
   const cloud = getCloudConfiguration();
   const importing = progress !== null || youtubeProgress !== null;
+  const youtubeIntro =
+    youtubeStatus === "enabled" ? "Your server fetches the audio and reuses anything it already has. Choose where the stems are made."
+    : youtubeStatus === "disabled" ? "This server has YouTube fetching turned off."
+    : youtubeStatus === "rejected" ? "The deployment key was rejected. Check it in Settings."
+    : youtubeStatus === "unreachable" ? "Could not reach your server. Check that it is running and reachable from this browser."
+    : youtubeStatus === "failing" ? "Your server answered with an error. Check its logs, then try again."
+    : youtubeStatus === "checking" ? "Checking your server…"
+    : youtubeStatus === "unconfigured" ? "Enter the deployment key in Settings to reach your server."
+    : "Fetching from YouTube runs on a server you host yourself, and this deployment does not include one.";
 
   useEffect(()=>{setQuery("");setSelected(new Set());setPreviewId(undefined)},[category]);
   useEffect(()=>setSelected(new Set()),[query]);
 
   useEffect(() => {
     let active = true;
-    if (!cloud) { setYoutubeEnabled(false); return; }
-    void cloudCapabilities(cloud).then((value: {youtubeEnabled?:boolean}) => { if (active) setYoutubeEnabled(Boolean(value.youtubeEnabled)); }, () => { if (active) setYoutubeEnabled(false); });
+    if (availability === "checking") { setYoutubeStatus("checking"); return; }
+    if (availability === "none") { setYoutubeStatus("absent"); return; }
+    if (!cloud) { setYoutubeStatus("unconfigured"); return; }
+    setYoutubeStatus("checking");
+    void cloudCapabilities(cloud).then(
+      (value: {youtubeEnabled?:boolean}) => { if (active) setYoutubeStatus(value.youtubeEnabled ? "enabled" : "disabled"); },
+      (error: unknown) => {
+        if (!active) return;
+        // fetch rejects with TypeError only when nothing answered at all. An
+        // Error carries one of the API's codes, and a server that answers with
+        // 500 is reachable — saying otherwise sends someone to check the wrong
+        // thing.
+        if (error instanceof TypeError) setYoutubeStatus("unreachable");
+        else if (error instanceof Error && error.message === "invalid_deployment_key") setYoutubeStatus("rejected");
+        else setYoutubeStatus("failing");
+      },
+    );
     return () => { active = false; };
-  }, [cloud?.origin, cloud?.deploymentKey]);
+  }, [availability, cloud?.origin, cloud?.deploymentKey]);
 
   const importFile = async (file?: File) => {
     if (!file || importing) return;
@@ -118,7 +150,7 @@ export function LibraryPage() {
     {progress && <div className={styles.progress} role="status"><SpinnerGap className={styles.spin}/><div><strong>{progress.phase === "preflight" ? "Checking storage and audio" : progress.phase === "writing" ? "Copying into this browser" : progress.phase === "verifying" ? "Checking the copy is identical" : "Adding to your Library"}</strong><span>{progress.phase === "preflight" ? "Nothing is added to your Library until the copy has been checked." : `${progressPercent}% complete`}</span></div><progress max="100" value={progressPercent}/></div>}
     {youtubeProgress && <div className={styles.progress} role="status"><SpinnerGap className={styles.spin}/><div><strong>{stageLabel(youtubeProgress.stage)}</strong><span>{Math.round(youtubeProgress.progress*100)}% · videos this server has already fetched are reused</span></div><progress max="100" value={youtubeProgress.progress*100}/><button onClick={()=>youtubeController.current?.abort(new Error("cancelled"))}>Cancel</button></div>}
     {error && <div className={styles.error} role="alert"><WarningCircle weight="fill"/><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
-    <div className={styles.acquisition}><section className={styles.localImport} aria-labelledby="import-heading"><FileAudio weight="fill"/><div><h2 id="import-heading">Import local audio</h2><p>Choose a song from this device. The verified copy stays in this browser.</p></div><button className={styles.import} disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? <SpinnerGap className={styles.spin}/> : <Plus weight="bold"/>}{importing ? "Importing…" : "Choose audio"}</button><input ref={inputRef} className="sr-only" aria-label="Choose audio to import" type="file" accept="audio/*,.flac" onChange={(event) => void importFile(event.target.files?.[0])}/></section><section className={styles.youtube} aria-labelledby="youtube-heading"><YoutubeLogo weight="fill"/><div><h2 id="youtube-heading">Fetch from YouTube</h2><p>{youtubeEnabled ? "Your server fetches the audio and reuses anything it already has. Choose where the stems are made." : cloud ? "The saved deployment key was rejected, or this server has YouTube fetching turned off." : "Add the server address and its deployment key in Settings."}</p></div>{youtubeEnabled&&<form onSubmit={event=>{event.preventDefault();void fetchYoutube()}}><label><span>YouTube URL</span><input type="url" value={youtubeUrl} onChange={event=>setYoutubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=…" required/></label><fieldset className={styles.processing}><legend>Separation</legend><label><input type="radio" name="youtube-processing" value="server" checked={youtubeProcessing==="server"} onChange={()=>setYoutubeProcessing("server")}/><span><b>Separate on server</b> Uses this host’s GPU and imports four finished stems.</span></label><label><input type="radio" name="youtube-processing" value="browser" checked={youtubeProcessing==="browser"} onChange={()=>setYoutubeProcessing("browser")}/><span><b>Fetch only; separate in this browser</b> Imports the source, then opens Studio for local separation.</span></label></fieldset><label className={styles.rights}><input type="checkbox" checked={rightsConfirmed} onChange={event=>setRightsConfirmed(event.target.checked)}/><span>I confirm I am authorized to download and process this content.</span></label><button disabled={!youtubeUrl||!rightsConfirmed||importing}>{youtubeProgress?"Working…":youtubeProcessing==="server"?"Fetch and separate":"Fetch to browser"}</button></form>}</section></div>
+    <div className={styles.acquisition}><section className={styles.localImport} aria-labelledby="import-heading"><FileAudio weight="fill"/><div><h2 id="import-heading">Import local audio</h2><p>Choose a song from this device. The verified copy stays in this browser.</p></div><button className={styles.import} disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? <SpinnerGap className={styles.spin}/> : <Plus weight="bold"/>}{importing ? "Importing…" : "Choose audio"}</button><input ref={inputRef} className="sr-only" aria-label="Choose audio to import" type="file" accept="audio/*,.flac" onChange={(event) => void importFile(event.target.files?.[0])}/></section><section className={styles.youtube} aria-labelledby="youtube-heading"><YoutubeLogo weight="fill"/><div><h2 id="youtube-heading">Fetch from YouTube</h2><p>{youtubeIntro}</p>{youtubeStatus==="absent"&&<p><a href={REPOSITORY} target="_blank" rel="noreferrer">Check GitHub to see how to host your own</a></p>}</div>{youtubeEnabled&&<form onSubmit={event=>{event.preventDefault();void fetchYoutube()}}><label><span>YouTube URL</span><input type="url" value={youtubeUrl} onChange={event=>setYoutubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=…" required/></label><fieldset className={styles.processing}><legend>Separation</legend><label><input type="radio" name="youtube-processing" value="server" checked={youtubeProcessing==="server"} onChange={()=>setYoutubeProcessing("server")}/><span><b>Separate on server</b> Uses this host’s GPU and imports four finished stems.</span></label><label><input type="radio" name="youtube-processing" value="browser" checked={youtubeProcessing==="browser"} onChange={()=>setYoutubeProcessing("browser")}/><span><b>Fetch only; separate in this browser</b> Imports the source, then opens Studio for local separation.</span></label></fieldset><label className={styles.rights}><input type="checkbox" checked={rightsConfirmed} onChange={event=>setRightsConfirmed(event.target.checked)}/><span>I confirm I am authorized to download and process this content.</span></label><button disabled={!youtubeUrl||!rightsConfirmed||importing}>{youtubeProgress?"Working…":youtubeProcessing==="server"?"Fetch and separate":"Fetch to browser"}</button></form>}</section></div>
     <nav className={styles.categories} aria-label="Library category">{(["originals","separated","performances"] as const).map(item=><button key={item} aria-current={category===item?"page":undefined} onClick={()=>setCategory(item)}>{item[0]!.toUpperCase()+item.slice(1)}<span>{item==="performances"?performances.length:item==="separated"?songs.filter(song=>"separated" in song&&song.separated).length:songs.length+(songs.some(song=>song.contentSha256===DEMO_TRACK.sha256)?0:1)}</span><small>{formatBytes(categoryUsage[item])}</small></button>)}</nav>
     <div className={styles.toolbar}><label><MagnifyingGlass/><span className="sr-only">Search library</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${category}`}/></label>{selected.size?<button className={styles.bulkRemove} onClick={()=>void removeSelected()}><Trash/>Remove selected ({selected.size})</button>:<span className={styles.sortNote}><ClockCounterClockwise/> Newest first</span>}</div>
     <input ref={reimportRef} className="sr-only" aria-label="Choose the source file to re-import" type="file" accept="audio/*,.flac" onChange={(event) => void reimport(event.target.files?.[0])}/>
