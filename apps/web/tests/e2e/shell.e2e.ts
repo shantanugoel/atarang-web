@@ -1,4 +1,4 @@
-import{expect,test}from"@playwright/test";
+import{expect,test,type Page}from"@playwright/test";
 import{syntheticProgression}from"../eval/synthetic";
 import{readFileSync}from"node:fs";
 
@@ -490,6 +490,9 @@ test("playback survives leaving the Studio, and says what is playing",async({pag
   await expect(page.getByRole("region",{name:"Now playing"})).toBeHidden();
 });
 
+/** Seconds off an A or B button, which reads "A\n00:11.500". */
+const boundary=async(page:Page,name:string)=>{const text=await page.getByRole("button",{name}).innerText();const[minutes,rest]=text.split("\n").at(-1)!.split(":");return Number(minutes)*60+Number(rest)};
+
 test("dragging the ruler above the waveform sets the A–B loop",async({page,isMobile})=>{
   await page.goto("/studio");
   const lane=page.locator('[title^="Drag to set the A–B loop"]'),box=(await lane.boundingBox())!;
@@ -503,9 +506,43 @@ test("dragging the ruler above the waveform sets the A–B loop",async({page,isM
   await expect(page.getByRole("button",{name:"Disable loop"})).toHaveAttribute("aria-pressed","true");
   if(isMobile)await page.getByRole("button",{name:"Practice",exact:true}).click();
   // The demo runs 46 seconds, so a quarter to three fifths of it is about 11.5 to 27.6.
-  const seconds=async(name:string)=>{const text=await page.getByRole("button",{name}).innerText();const[minutes,rest]=text.split("\n").at(-1)!.split(":");return Number(minutes)*60+Number(rest)};
-  expect(await seconds("Set loop start at playhead")).toBeCloseTo(11.5,0);
-  expect(await seconds("Set loop end at playhead")).toBeCloseTo(27.6,0);
+  expect(await boundary(page,"Set loop start at playhead")).toBeCloseTo(11.5,0);
+  expect(await boundary(page,"Set loop end at playhead")).toBeCloseTo(27.6,0);
+});
+
+test("the A–B loop turns at B, not a quarter second later",async({page,isMobile})=>{
+  // The loop used to be held from React, off `timeupdate`, so every pass played
+  // about a quarter of a second past B before it jumped back — audible on a
+  // loop set to one phrase. The element never enters the DOM, so the only way
+  // to read the clock it actually plays from is to catch it as it starts.
+  await page.addInitScript(()=>{const play=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(this:HTMLMediaElement){Object.assign(window,{element:this});return play.call(this)}});
+  await page.goto("/studio");
+  await page.getByRole("button",{name:"Play",exact:true}).click();
+  if(isMobile)await page.getByRole("button",{name:"Practice",exact:true}).click();
+  const transport=page.getByRole("region",{name:"Waveform and transport"});
+  const at=async(seconds:number,name:string)=>{
+    await page.evaluate(value=>{(window as unknown as{element:HTMLAudioElement}).element.currentTime=value},seconds);
+    await expect.poll(async()=>Number(await transport.getAttribute("data-source-time-us"))).toBeGreaterThan(seconds*1_000_000-100_000);
+    await page.getByRole("button",{name}).click();
+  };
+  await at(5,"Set loop start at playhead");
+  await at(8,"Set loop end at playhead");
+  const loopEnd=await boundary(page,"Set loop end at playhead");
+  // Sampled from the element rather than the rendered playhead, which only
+  // moves as often as `timeupdate` fires and would hide the very lateness
+  // being measured.
+  const overshoot=await page.evaluate(async()=>{
+    const element=(window as unknown as{element:HTMLAudioElement}).element;
+    element.currentTime=7;
+    if(element.paused)await element.play();
+    const times:number[]=[],sampler=setInterval(()=>times.push(element.currentTime),8);
+    await new Promise(resolve=>setTimeout(resolve,7_000));
+    clearInterval(sampler);
+    // The last time seen before each jump back to A: how far past B it ran.
+    return times.flatMap((time,index)=>index>0&&time<times[index-1]!-.05?[times[index-1]!]:[]);
+  });
+  expect(overshoot.length).toBeGreaterThanOrEqual(2);
+  for(const last of overshoot)expect(last).toBeLessThan(loopEnd+.08);
 });
 
 test("sing-along follows timed lyrics and turns lyric gestures into a loop",async({page,isMobile})=>{

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import demoUrl from "../../assets/backbeat.mp3";
-import type { ImportedPlayback } from "./useImportedAudio";
+import { useLoopWrap, wrapLoop, type ImportedPlayback } from "./useImportedAudio";
 
 export const DEMO_TRACK = {
   title: "Backbeat",
@@ -27,7 +27,7 @@ export function useDemoAudio(speed = 1, enabled = true, volume = 1): ImportedPla
     audio.volume = volume;
     audio.preservesPitch = true;
     audioRef.current = audio;
-    const update = () => setState((current) => ({ ...current, playing: !audio.paused, currentTimeUs: Math.round(audio.currentTime * 1_000_000), durationUs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000_000) : DEMO_TRACK.durationUs }));
+    const update = () => { wrapLoop(audio); setState((current) => ({ ...current, playing: !audio.paused, currentTimeUs: Math.round(audio.currentTime * 1_000_000), durationUs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000_000) : DEMO_TRACK.durationUs })); };
     const ready = () => setState((current) => ({ ...current, ready: true, error: "" }));
     const failed = () => setState((current) => ({ ...current, ready: false, playing: false, error: "The bundled demo audio could not be decoded by this browser." }));
     for (const event of ["timeupdate", "play", "pause", "ended", "durationchange"]) audio.addEventListener(event, update);
@@ -45,6 +45,7 @@ export function useDemoAudio(speed = 1, enabled = true, volume = 1): ImportedPla
     };
   }, [enabled]);
 
+  useLoopWrap(audioRef, state.playing);
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.playbackRate = speed;

@@ -61,9 +61,6 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   const toggleRecording = useStudioStore((state) => state.toggleRecording);
   const setLoopStart = useStudioStore((state) => state.setLoopStart);
   const setLoopEnd = useStudioStore((state) => state.setLoopEnd);
-  const loopEnabled = useStudioStore((state) => state.loopEnabled);
-  const loopStartUs = useStudioStore((state) => state.loopStartUs);
-  const loopEndUs = useStudioStore((state) => state.loopEndUs);
   const [original, setOriginal] = useState<OriginalRecord | null | undefined>(songId ? undefined : null);
   // The demo is a megabyte of audio. Someone who only opens the Library should
   // not fetch it, so it waits until the Studio has been opened at least once.
@@ -107,7 +104,6 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   // ramp sits dead for as many passes as the last song reached.
   useEffect(() => { lastRepetition.current = 1; }, [original, separation]);
   useEffect(() => { const repetition = playback.repetition ?? 1; if (repetition > lastRepetition.current) useStudioStore.getState().rampSpeed(); lastRepetition.current = repetition; }, [playback.repetition]);
-  useEffect(() => { if (separation === null && playback.playing && loopEnabled && playback.currentTimeUs >= loopEndUs) playback.seekTo(loopStartUs / 1_000_000); }, [loopEnabled, loopEndUs, loopStartUs, playback.currentTimeUs, playback.playing, playback.seekTo, separation]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;

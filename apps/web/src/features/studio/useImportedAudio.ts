@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { OriginalRecord } from "../../storage/database";
 import type { StemKind } from "@atarang/contracts";
 import { fileForOpfsPath } from "../../storage/opfs";
 import { getBlob } from "../../storage/repositories";
+import { useStudioStore } from "./studioStore";
 
 export interface ImportedPlayback {
   ready: boolean;
@@ -29,6 +30,33 @@ export interface ImportedPlayback {
 // needs re-importing.
 const AUDIO_RECLAIMED ="This song’s audio is no longer on this device — the browser reclaimed the space. Re-import the source file from your Library to play it again.";
 
+/**
+ * Send the element back to A the moment it passes B.
+ *
+ * The A–B loop used to be held from React: `timeupdate` fires about four times
+ * a second, the time went through state, and the seek came back an effect
+ * later — a quarter of a second of the next bar, every pass, on a loop people
+ * set to practise one phrase. So the element's own clock is read here instead,
+ * per frame while it is playing and on every `timeupdate` in a hidden tab,
+ * where frames stop. The four-stem engine loops inside the worklet and needs
+ * none of this.
+ */
+export function wrapLoop(audio: HTMLAudioElement) {
+  const { loopEnabled, loopStartUs, loopEndUs } = useStudioStore.getState();
+  // A seek already on its way still reports the old time, and asking for the
+  // same one again only restarts it.
+  if (!loopEnabled || audio.paused || audio.seeking) return;
+  if (audio.currentTime * 1_000_000 >= loopEndUs) audio.currentTime = loopStartUs / 1_000_000;
+}
+
+export function useLoopWrap(audioRef: RefObject<HTMLAudioElement | null>, playing: boolean) {
+  useEffect(() => {
+    if (!playing) return;
+    let frame = requestAnimationFrame(function check() { frame = requestAnimationFrame(check); if (audioRef.current) wrapLoop(audioRef.current); });
+    return () => cancelAnimationFrame(frame);
+  }, [audioRef, playing]);
+}
+
 export function useImportedAudio(original?: OriginalRecord, speed = 1, volume = 1): ImportedPlayback {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [state, setState] = useState({ ready: false, playing: false, currentTimeUs: 0, durationUs: original?.durationUs ?? 0, error: "" });
@@ -48,7 +76,7 @@ export function useImportedAudio(original?: OriginalRecord, speed = 1, volume = 
     audio.volume = volume;
     audio.preservesPitch = true;
     audioRef.current = audio;
-    const update = () => setState((current) => ({ ...current, playing: !audio.paused, currentTimeUs: Math.round(audio.currentTime * 1_000_000), durationUs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000_000) : original.durationUs }));
+    const update = () => { wrapLoop(audio); setState((current) => ({ ...current, playing: !audio.paused, currentTimeUs: Math.round(audio.currentTime * 1_000_000), durationUs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000_000) : original.durationUs })); };
     const ready = () => setState((current) => ({ ...current, ready: true, error: "" }));
     const failed = (message: string) => setState((current) => ({ ...current, ready: false, playing: false, error: message }));
     const decodeFailed = () => failed("This stored audio could not be decoded by this browser.");
@@ -73,6 +101,7 @@ export function useImportedAudio(original?: OriginalRecord, speed = 1, volume = 
       if (audioRef.current === audio) audioRef.current = null;
     };
   }, [original]);
+  useLoopWrap(audioRef, state.playing);
   useEffect(()=>{if(audioRef.current){audioRef.current.playbackRate=speed;audioRef.current.preservesPitch=true}},[speed]);
   useEffect(()=>{if(audioRef.current)audioRef.current.volume=Math.max(0,Math.min(1,volume))},[volume]);
 
