@@ -1,5 +1,10 @@
 # Server model build input
 
-Place the reviewed official four-stem `htdemucs` checkpoint here as `htdemucs.th`; it is deliberately not committed because it is not the browser model. Build both worker images with `MODEL_ARTIFACT_SHA256` set to the independently verified checkpoint SHA-256. The Dockerfiles copy it to Demucs signature `955717e8` and fail the build if the bytes differ.
+The worker Dockerfiles download the reviewed official four-stem `htdemucs`
+checkpoint from the pinned upstream URL during the image build. Set
+`MODEL_ARTIFACT_SHA256` to the independently verified checkpoint SHA-256; the
+build fails if the downloaded bytes differ. The Dockerfiles install it at
+Demucs signature `955717e8`.
 
-The worker network is internal and cannot download or replace weights at startup.
+The worker network is internal and cannot download or replace weights at
+startup.

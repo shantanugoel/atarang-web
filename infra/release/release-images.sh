@@ -4,8 +4,6 @@ set -eu
 : "${VERSION:?set VERSION}"
 : "${MODEL_ARTIFACT_SHA256:?set MODEL_ARTIFACT_SHA256}"
 test -f uv.lock
-test -f models/server/htdemucs.th
-echo "$MODEL_ARTIFACT_SHA256  models/server/htdemucs.th" | sha256sum -c -
 uv lock --check
 bun install --frozen-lockfile
 bun run typecheck

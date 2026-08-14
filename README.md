@@ -108,13 +108,10 @@ Sources live in `services/api`, `services/worker`, `services/acquisition` and
 Before building:
 
 1. Generate `uv.lock` with Python 3.12 and uv; require `uv lock --check` in CI.
-2. Only if you are running a separation worker (`--profile cpu` or `cuda`): put
-   the official `htdemucs` checkpoint at `models/server/htdemucs.th` and supply
-   its reviewed SHA-256 as both the image build argument and
-   `MODEL_ARTIFACT_SHA256`. The image build fails on a mismatch. The file is
-   gitignored but not dockerignored, so a build from a local checkout picks it
-   up; a build from a fresh clone — anything driven by a git URL, Coolify
-   included — will not have it.
+2. Only if you are running a separation worker (`--profile cpu` or `cuda`): set
+   `MODEL_ARTIFACT_SHA256` to the reviewed SHA-256 of the official `htdemucs`
+   checkpoint. The worker Dockerfile downloads the pinned checkpoint URL during
+   the image build and fails on a mismatch; workers never download it at runtime.
 3. `cd infra/compose && ./create-env.sh .env` (or fill `.env` from
    `.env.example` with random secrets — do not commit it). `YOUTUBE_ENABLED=true`
    only for an operator-approved deployment; the acquisition container pins

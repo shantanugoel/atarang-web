@@ -36,7 +36,7 @@ htmlcov/
 
 # Downloaded model weights. Manifests and download scripts remain tracked.
 # The checked-in chord and browser separation models are build inputs. The
-# server checkpoint remains local because it is a separate, much larger model.
+# server checkpoint is downloaded and verified during worker image builds.
 /models/**/*.pt
 /models/**/*.pth
 /models/**/*.th

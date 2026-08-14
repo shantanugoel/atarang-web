@@ -15,14 +15,19 @@ COPY services/worker services/worker
 COPY bench/separation bench/separation
 RUN uv sync --locked --no-dev --no-editable --package atarang-worker --extra cuda
 
+FROM alpine:3.22 AS model
+ARG MODEL_ARTIFACT_URL=https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th
+ARG MODEL_ARTIFACT_SHA256
+RUN apk add --no-cache ca-certificates \
+    && test -n "$MODEL_ARTIFACT_SHA256" \
+    && wget -q -O /htdemucs.th "$MODEL_ARTIFACT_URL" \
+    && echo "$MODEL_ARTIFACT_SHA256  /htdemucs.th" | sha256sum -c -
+
 FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 RUN apt-get update && apt-get install -y --no-install-recommends python3.12 ffmpeg ca-certificates && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10002 --home /nonexistent --shell /usr/sbin/nologin atarang
 COPY --from=build /app/.venv /app/.venv
-ARG MODEL_WEIGHT_FILE=models/server/htdemucs.th
-ARG MODEL_ARTIFACT_SHA256
-COPY ${MODEL_WEIGHT_FILE} /models/hub/checkpoints/955717e8-8726e21a.th
-RUN test -n "$MODEL_ARTIFACT_SHA256" && echo "$MODEL_ARTIFACT_SHA256  /models/hub/checkpoints/955717e8-8726e21a.th" | sha256sum -c -
+COPY --from=model /htdemucs.th /models/hub/checkpoints/955717e8-8726e21a.th
 ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 TORCH_HOME=/models
 USER 10002:10002
 CMD ["atarang-worker"]
