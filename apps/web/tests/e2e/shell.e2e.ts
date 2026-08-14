@@ -430,10 +430,22 @@ test("sing-along follows timed lyrics and turns lyric gestures into a loop",asyn
   await page.getByLabel("Choose audio to import").setInputFiles({name:"sing-along.wav",mimeType:"audio/wav",buffer:silentWav(2_205_000)});
   await page.getByRole("button",{name:"Skip for now and just play the song"}).click();
   await page.getByLabel("Choose LRC lyrics").setInputFiles({name:"sing-along.lrc",mimeType:"text/plain",buffer:Buffer.from("[00:00.00]First line\n[00:20.00]Second line\n[00:40.00]Third line")});
+  // Chords belong to the Chords tab. Reading lyrics is the whole job here, and
+  // the rail used to steal the top of the panel to say so twice.
+  const rail=page.getByRole("region",{name:"Detected chord timeline"});
+  await expect(rail).toBeHidden();
   await page.getByRole("button",{name:"Sing along"}).click();
   await expect(page).toHaveURL(/sing=1/);
   await expect(page.getByRole("button",{name:"Exit sing-along"})).toBeVisible();
+  await expect(rail).toBeHidden();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(await page.evaluate(()=>innerWidth));
+  // The sing-along toolbar is fixed and wraps to three rows on a phone, so the
+  // scroller's top padding has to clear it or the first line is unreadable.
+  expect(await page.evaluate(()=>{
+    const toolbar=document.querySelector('[class*="singToolbar"]')!.getBoundingClientRect();
+    document.querySelector<HTMLElement>('[role="tabpanel"]')!.scrollTop=0;
+    return document.querySelector('[data-line-index="0"]')!.getBoundingClientRect().top>=toolbar.bottom;
+  })).toBe(true);
   await page.mouse.wheel(0,200);
   await expect(page.getByRole("button",{name:"Resume follow"})).toBeVisible();
   await page.getByRole("button",{name:"Resume follow"}).click();

@@ -18,7 +18,7 @@ import type { LyricsDocumentV1 } from "@atarang/contracts";
 import { StudioTab, useStudioStore } from "../studioStore";
 import { activeLyricLine, exportLrc, lyricLoopRange, parseLrc } from "../../lyrics/lrc";
 import { useLyrics } from "../../lyrics/useLyrics";
-import { AnalysisChordRail, ChordWorkspace } from "./ChordWorkspace";
+import { ChordWorkspace } from "./ChordWorkspace";
 import { TakesWorkspace } from "./TakesWorkspace";
 import styles from "./LyricsWorkspace.module.css";
 import { DEMO_TRACK } from "../useDemoAudio";
@@ -311,14 +311,6 @@ export function LyricsWorkspace({
           onPointerUpCapture={finishGesture}
           onPointerCancelCapture={finishGesture}
         >
-          {!editing && (
-            <AnalysisChordRail
-              originalId={originalId}
-              currentTimeUs={currentTimeUs}
-              seekTo={seekTo}
-              compact
-            />
-          )}
           <div className={`${styles.editorToolbar} ${singAlong ? styles.singToolbar : ""}`}>
             {singAlong ? (
               <>
