@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CloudSlash, Cpu, Database, DownloadSimple, MusicNotesSimple, ShieldCheck, UploadSimple, Waveform } from "@phosphor-icons/react";
+import { ArrowSquareOut, CloudSlash, Cpu, Database, DownloadSimple, Info, MusicNotesSimple, ShieldCheck, UploadSimple, Waveform } from "@phosphor-icons/react";
+import {appVersion} from "../../generated/app-version";
 import { libraryUsage, putSetting } from "../../storage/repositories";
 import {downloadBackup,restoreBackup} from "../../storage/backup";
 import {userMessage} from "../../app/errorText";
@@ -57,8 +58,27 @@ function deviceReadout(model: ReturnType<typeof useModelManager>) {
   return "Ready · not benchmarked";
 }
 const formatBytes = (bytes: number) => bytes < 1_000_000 ? `${Math.round(bytes / 1_000)} KB` : bytes < 1_000_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${(bytes / 1_000_000_000).toFixed(1)} GB`;
-const settingSections=["storage","audio","chords","models","privacy"] as const;
-const settingSection=()=>settingSections.find(section=>location.hash===`#${section}`)??"storage";
+// One list, so the picker, the side navigation and the fallback cannot disagree
+// about which sections exist or which one you are looking at.
+const SETTING_SECTIONS=[
+  {id:"about",label:"About",icon:Info},
+  {id:"storage",label:"Storage",icon:Database},
+  {id:"audio",label:"Audio",icon:Waveform},
+  {id:"chords",label:"Chords",icon:MusicNotesSimple},
+  {id:"models",label:"Models",icon:Cpu},
+  {id:"privacy",label:"Privacy",icon:ShieldCheck},
+] as const;
+const settingSection=()=>SETTING_SECTIONS.find(section=>location.hash===`#${section.id}`)?.id??"about";
+
+const REPOSITORY="https://github.com/shantanugoel/atarang-web";
+
+/** The mark from the browser tab, at a size you can actually see. */
+const AtarangMark=()=>(
+  <svg className={styles.mark} viewBox="0 0 32 32" aria-hidden>
+    <rect width="32" height="32" rx="7" fill="var(--accent)"/>
+    <path d="M13 8.5 22 6.6v11.6a3.1 3.1 0 1 1-2-2.9V11l-5 1.1v8.6a3.1 3.1 0 1 1-2-2.9z" fill="#fff"/>
+  </svg>
+);
 
 export function SettingsPage() {
   const [storage, setStorage] = useState<StorageStatus | null>(null);
@@ -90,8 +110,16 @@ export function SettingsPage() {
     }
   };
   return <div className={styles.page}><header><h1>Settings</h1><p>Storage, audio, privacy, and capabilities.</p></header>
-    <div className={styles.layout}><label className={styles.sectionPicker}>Settings section<select aria-label="Settings section" value={`#${section}`} onChange={event=>{location.hash=event.target.value}}>{settingSections.map(value=><option key={value} value={`#${value}`}>{value[0]!.toUpperCase()+value.slice(1)}</option>)}</select></label><nav aria-label="Settings sections"><a href="#storage" className={styles.selected}><Database/>Storage</a><a href="#audio"><Waveform/>Audio</a><a href="#chords"><MusicNotesSimple/>Chords</a><a href="#models"><Cpu/>Models</a><a href="#privacy"><ShieldCheck/>Privacy</a></nav>
+    <div className={styles.layout}><label className={styles.sectionPicker}>Settings section<select aria-label="Settings section" value={`#${section}`} onChange={event=>{location.hash=event.target.value}}>{SETTING_SECTIONS.map(({id,label})=><option key={id} value={`#${id}`}>{label}</option>)}</select></label><nav aria-label="Settings sections">{SETTING_SECTIONS.map(({id,label,icon:Icon})=><a key={id} href={`#${id}`} aria-current={section===id?"true":undefined}><Icon/>{label}</a>)}</nav>
       <div className={styles.content}>
+        <section id="about"><h2>About</h2>
+          <div className={styles.about}>
+            <AtarangMark/>
+            <div><strong>Atarang</strong><p>Separate songs into stems, mix them the way you need, and record yourself playing along. Everything happens in this browser.</p></div>
+          </div>
+          <dl className={styles.aboutFacts}><div><dt>Version</dt><dd>{appVersion}</dd></div><div><dt>Author</dt><dd>Shantanu Goel</dd></div></dl>
+          <div className={styles.actions}><a className={styles.link} href={REPOSITORY} target="_blank" rel="noreferrer">View the project on GitHub<ArrowSquareOut/></a></div>
+        </section>
         <section id="storage"><h2>Browser storage</h2><p>Atarang stores your library locally using IndexedDB and the Origin Private File System.</p><dl><div><dt>Persistence</dt><dd className={storage?.persisted ? styles.good : ""}>{storage ? storage.persisted ? "Granted" : "Not granted" : "Checking…"}</dd></div><div><dt>Imported originals</dt><dd>{storage ? formatBytes(storage.libraryBytes) : "Checking…"}</dd></div><div><dt>Origin usage</dt><dd>{storage ? `${formatBytes(storage.usage)} of ${formatBytes(storage.quota)}` : "Checking…"}</dd></div><div><dt>Recovery notices</dt><dd>{quarantineCount||"None"}</dd></div></dl><div className={styles.actions}>{!storage?.persisted && <button className={styles.primary} onClick={() => void requestPersistence()}>Request persistent storage</button>}<button onClick={() => void refresh()}>Refresh usage</button></div><h3>Backup and restore</h3><p>Backups include originals, separated stems, takes, practice settings, lyrics, charts, and saved chord voicings. Every binary is checksum-verified before restore publishes anything.</p><div className={styles.actions}><button className={styles.primary} onClick={()=>{setBackupStatus("Preparing verified backup…");void downloadBackup(true).then(()=>setBackupStatus("Backup ready."),error=>setBackupStatus(userMessage(error,backupErrors,"The backup could not be written. Your library is unchanged.")))}}><DownloadSimple/>Backup library</button><button onClick={()=>restoreInput.current?.click()}><UploadSimple/>Restore backup</button><input ref={restoreInput} className="sr-only" type="file" accept=".zip,.atarang-backup.zip,application/zip" aria-label="Choose Atarang backup" onChange={event=>{const file=event.target.files?.[0];if(!file)return;setBackupStatus("Verifying backup…");void restoreBackup(file).then(result=>{setBackupStatus(`Restored ${result.originals} songs and ${result.performances} takes.`);void refresh()},error=>setBackupStatus(userMessage(error,restoreErrors,"The backup could not be restored. Your existing library is unchanged.")));event.target.value=""}}/></div>{backupStatus&&<p role="status">{backupStatus}</p>}</section>
         <section id="audio"><h2>Audio engine</h2><dl><div><dt>Cross-origin isolation</dt><dd className={crossOriginIsolated ? styles.good : ""}>{crossOriginIsolated ? "Enabled" : "Unavailable"}</dd></div><div><dt>Shared memory</dt><dd>{typeof SharedArrayBuffer === "undefined" ? "Transfer-buffer fallback" : "Available"}</dd></div><div><dt>Output</dt><dd>System default</dd></div></dl></section>
         <UserChordLibrary/>

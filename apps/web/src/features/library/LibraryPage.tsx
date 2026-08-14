@@ -116,7 +116,7 @@ export function LibraryPage() {
       {category==="performances"&&visiblePerformances.map(take=>{const song=originalById.get(take.originalId);return <div className={`${styles.row} ${selected.has(take.id)?styles.selected:""}`} key={take.id}><input className={styles.select} type="checkbox" aria-label={`Select take from ${song?.title??"recording"}`} checked={selected.has(take.id)} onChange={()=>toggleSelected(take.id)}/><span className={`${styles.art} ${styles.takeArt}`}><Microphone weight="fill"/></span><span className={styles.song}><strong>{song?.title??"Recorded take"}</strong><small>{song?.artist??"Local performance"}</small></span><span>{formatDuration(Math.round(take.manifest.durationFrames/take.manifest.sampleRate*1_000_000))}</span><span>{formatDate(take.createdAt)}</span><span className={styles.asset}><Waveform/>Take</span><span className={styles.rowActions}><Link to={`/studio/${take.originalId}`}>Open takes</Link><button aria-label="Remove recorded take" onClick={()=>void removeTake(take.id)}><Trash/></button></span></div>})}
       {!loading&&category==="performances"&&visiblePerformances.length===0&&<div className={styles.empty}><Microphone weight="thin"/><strong>{query?"No matching takes":"No performances yet"}</strong><p>Record in Studio and every completed take will appear here.</p></div>}
     </section>
-    <footer><span><HardDrives/> {formatBytes(usage)} used by local audio assets</span><Link to="/settings"><FolderOpen/> Manage storage</Link></footer>
+    <footer><span><HardDrives/> {formatBytes(usage)} used by local audio assets</span><Link to="/settings#storage"><FolderOpen/> Manage storage</Link></footer>
   </div>;
 }
 
