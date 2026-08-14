@@ -9,7 +9,7 @@ import {
   UploadSimple,
   WarningCircle,
 } from "@phosphor-icons/react";
-import type { UserChartV1,UserChordV1 } from "@atarang/contracts";
+import { CHORD_COMPLEXITIES, type ChordComplexityV1,type UserChartV1,type UserChordV1 } from "@atarang/contracts";
 import {
   chordProIssues,
   exportChordPro,
@@ -19,7 +19,7 @@ import {
   transposeChord,
 } from "../../chords/chords";
 import { UNRELIABLE_CONFIDENCE } from "../../analysis/chordDetection";
-import { bestChordShape } from "../../chords/shapes";
+import { bestChordShape, displayChord, type ChordDisplay } from "../../chords/shapes";
 import { useCharts } from "../../chords/useCharts";
 import{useUserChords}from"../../chords/useUserChords";
 import { usePlaybackSession } from "../PlaybackSession";
@@ -31,6 +31,10 @@ import { uuidV7 } from "../../../storage/ids";
 import styles from "./ChordWorkspace.module.css";
 
 const FRET_ROWS = 5;
+
+// Named for what the player gets rather than for the reduction — "Triads" is a
+// thing you can play, "simple" is not. The contract owns the order.
+const COMPLEXITY_LABELS: Record<ChordComplexityV1, string> = { full: "Off", simple: "Triads", beginner: "Open shapes", power: "Power chords" };
 
 function ChordDiagram({ chord,userChords,role }: { chord: string;userChords:readonly UserChordV1[];role?:"Now"|"Next"|undefined }) {
   const shape = bestChordShape(chord,userChords);
@@ -70,8 +74,7 @@ export function AnalysisChordRail({
   currentTimeUs = 0,
   seekTo,
   compact = false,
-  transposeSemitones = 0,
-  simplify = false,
+  display = { transposeSemitones: 0, complexity: "full" },
   follow = false,
   onChordSelect,
 }: {
@@ -79,8 +82,7 @@ export function AnalysisChordRail({
   currentTimeUs?: number;
   seekTo?: ((seconds: number) => void) | undefined;
   compact?: boolean;
-  transposeSemitones?: number;
-  simplify?: boolean;
+  display?: ChordDisplay;
   follow?: boolean;
   onChordSelect?: (chord:string)=>void;
 }) {
@@ -97,7 +99,7 @@ export function AnalysisChordRail({
         currentTimeUs < segment.endTimeUs,
     ),
   );
-  const shown = (chord: string) => transposeChord(chord, transposeSemitones, simplify),
+  const shown = (chord: string) => displayChord(chord, display),
     current = segments[active],
     next = nextChordChange(segments, active);
   useEffect(() => {
@@ -202,7 +204,7 @@ export function ChordWorkspace({
     view = useStudioStore((state) => state.chordView),
     setView = useStudioStore((state) => state.setChordView),
     setTab = useStudioStore((state) => state.setTab),
-    [settings, setSettings] = useState({ transposeSemitones: 0, simplify: false, capo: 0 }),
+    [settings, setSettings] = useState<ChordDisplay & { capo: number }>({ transposeSemitones: 0, complexity: "full", capo: 0 }),
     [leadMode,setLeadMode] = useState<"both"|"lyrics"|"chords">("both"),
     [selectedChord,setSelectedChord] = useState<string>(),
     [panel, setPanel] = useState<"paste" | "edit" | null>(null),
@@ -216,35 +218,29 @@ export function ChordWorkspace({
     : view === "chart" && !chart && analysis?.segments.length ? "timeline"
     : view;
   useEffect(() => {
-    setSettings({ transposeSemitones: 0, simplify: false, capo: 0 });
+    setSettings({ transposeSemitones: 0, complexity: "full", capo: 0 });
     setPanel(null);
     setDraft("");
     setIssues([]);
     setSelectedChord(undefined);
   }, [originalId]);
   useEffect(() => {
-    if (chart) setSettings({ transposeSemitones: chart.transposeSemitones, simplify: chart.simplify, capo: chart.capo });
+    if (chart) setSettings({ transposeSemitones: chart.transposeSemitones, complexity: chart.complexity, capo: chart.capo });
   }, [chart?.chartId]);
-  useEffect(()=>setSelectedChord(undefined),[settings.transposeSemitones,settings.simplify]);
+  useEffect(()=>setSelectedChord(undefined),[settings.transposeSemitones,settings.complexity]);
   const rendered = useMemo(
     () =>
       chart?.lines.map((line) => ({
         ...line,
         segments: line.segments.map((segment) => ({
           ...segment,
-          chord: segment.chord
-            ? transposeChord(
-                segment.chord,
-                settings.transposeSemitones,
-                settings.simplify,
-              )
-            : undefined,
+          chord: segment.chord ? displayChord(segment.chord, settings) : undefined,
         })),
       })),
-    [chart, settings.simplify, settings.transposeSemitones],
+    [chart, settings.complexity, settings.transposeSemitones],
   );
   const activeLyrics = lyrics ? activeLyricLine(lyrics,currentTimeUs) : -1;
-  const shown = (chord:string) => transposeChord(chord,settings.transposeSemitones,settings.simplify);
+  const shown = (chord:string) => displayChord(chord, settings);
   // Two shapes, because the hand has to be moving to the next chord while the
   // current one is still ringing.
   const segments = analysis?.segments ?? [],
@@ -436,7 +432,17 @@ export function ChordWorkspace({
         <button aria-label="Transpose down" onClick={() => changeSettings({ transposeSemitones: Math.max(-12, settings.transposeSemitones - 1) })}>−</button>
         <output>{settings.transposeSemitones > 0 ? `+${settings.transposeSemitones}` : settings.transposeSemitones}</output>
         <button aria-label="Transpose up" onClick={() => changeSettings({ transposeSemitones: Math.min(12, settings.transposeSemitones + 1) })}>+</button>
-        <button aria-pressed={settings.simplify} onClick={() => changeSettings({ simplify: !settings.simplify })}>Simplify</button>
+        <label>
+          Simplify
+          <select
+            aria-label="Simplify"
+            disabled={panel === "edit"}
+            value={settings.complexity}
+            onChange={(event) => changeSettings({ complexity: event.target.value as ChordComplexityV1 })}
+          >
+            {CHORD_COMPLEXITIES.map((value) => <option key={value} value={value}>{COMPLEXITY_LABELS[value]}</option>)}
+          </select>
+        </label>
         <label>
           Capo
           <button aria-label="Decrease capo" onClick={() => changeSettings({ capo: Math.max(0, settings.capo - 1) })}>−</button>
@@ -453,7 +459,7 @@ export function ChordWorkspace({
       </div>}
       {activeView === "timeline" && analysis?.segments.length ? (
         <div className={styles.detected}>
-          <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} transposeSemitones={settings.transposeSemitones} simplify={settings.simplify} follow onChordSelect={setSelectedChord} />
+          <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} display={settings} follow onChordSelect={setSelectedChord} />
           <div className={styles.detectedActions}>
             <p>Detected chords stay aligned to source time. Click any segment to seek; editing saves a separate chart.</p>
             {importButton}
@@ -475,16 +481,16 @@ export function ChordWorkspace({
             : lyrics === undefined ? <p role="status">Opening lyrics…</p>
             : !lyrics ? <div className={styles.noLyrics}><strong>No lyrics yet</strong><p>Add lyrics first, then return here to practise with both sources together.</p><button onClick={() => setTab("lyrics")}>Add lyrics</button></div>
             : <>
-              <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} compact transposeSemitones={settings.transposeSemitones} simplify={settings.simplify} />
+              <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} compact display={settings} />
               {lyrics.lines.map((line,index) => {
                 const time = line.startTimeUs === undefined ? undefined : line.startTimeUs + lyrics.offsetUs,
                   segment = time === undefined ? undefined : analysis?.segments.find(item => item.startTimeUs <= time && time < item.endTimeUs),
-                  chord = segment ? transposeChord(segment.chord, settings.transposeSemitones, settings.simplify) : undefined,
+                  chord = segment ? shown(segment.chord) : undefined,
                   inline = parseChordLine(line.text),
                   hasInline = inline.some(item=>item.chord);
                 return <button className={activeLyrics === index ? styles.activeLine : ""} key={line.id} onClick={() => time !== undefined && seekTo?.(time / 1_000_000)}>
                   <span>{inline.map((item,itemIndex)=><span className={styles.leadSegment} key={itemIndex}>
-                    {leadMode !== "lyrics" && (item.chord ? <b>{transposeChord(item.chord,settings.transposeSemitones,settings.simplify)}</b> : itemIndex === 0 && !hasInline && chord ? <b>{chord}</b> : null)}
+                    {leadMode !== "lyrics" && (item.chord ? <b>{shown(item.chord)}</b> : itemIndex === 0 && !hasInline && chord ? <b>{chord}</b> : null)}
                     {leadMode !== "chords" && <i>{item.text || " "}</i>}
                   </span>)}</span>
                 </button>;

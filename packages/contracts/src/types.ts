@@ -44,7 +44,17 @@ export interface LyricLineV1 { id:string;text:string;startTimeUs?:number;endTime
 export interface LyricsDocumentV1 { schema:"atarang.lyrics/1";originalId:string;revision:number;offsetUs:number;lines:LyricLineV1[];updatedAt:string }
 export interface ChartSegmentV1 { chord?:string;text:string }
 export interface ChartLineV1 { id:string;section?:string;segments:ChartSegmentV1[] }
-export interface UserChartV1 { schema:"atarang.chart/1";chartId:string;originalId:string;revision:number;title:string;artist:string;declaredKey?:string;transposeSemitones:number;capo:number;simplify:boolean;lines:ChartLineV1[];updatedAt:string }
+/**
+ * How far a chart is reduced before it is printed, easiest last.
+ *
+ * `full` is what was written or heard. `simple` is the plain triad under each
+ * symbol. `beginner` keeps reducing until the chord has an open-position grip.
+ * `power` is root and fifth, which is what a distorted guitar plays anyway and
+ * what makes a fast song possible for one hand.
+ */
+export const CHORD_COMPLEXITIES=["full","simple","beginner","power"] as const;
+export type ChordComplexityV1=(typeof CHORD_COMPLEXITIES)[number];
+export interface UserChartV1 { schema:"atarang.chart/1";chartId:string;originalId:string;revision:number;title:string;artist:string;declaredKey?:string;transposeSemitones:number;capo:number;complexity:ChordComplexityV1;lines:ChartLineV1[];updatedAt:string }
 export interface UserChordV1 {schema:"atarang.user-chord/1";chordId:string;revision:number;symbol:string;frets:(number|null)[];barreFret?:number;updatedAt:string}
 export interface BeatV1 {timeUs:number;beatInBar:1|2|3|4;downbeat:boolean}
 export type BeatAlgorithmV1="atarang-spectral-flux/1"|"atarang-beat-dp/1";
@@ -110,8 +120,21 @@ export function lyricsDocumentErrors(value:unknown):string[]{
 }
 export function assertLyricsDocument(value:unknown):asserts value is LyricsDocumentV1{const errors=lyricsDocumentErrors(value);if(errors.length)throw new Error(`invalid_lyrics: ${errors.join("; ")}`)}
 
-export function userChartErrors(value:unknown):string[]{if(!value||typeof value!=="object")return["chart must be an object"];const chart=value as Partial<UserChartV1>,errors:string[]=[];if(chart.schema!=="atarang.chart/1")errors.push("schema must be atarang.chart/1");if(!chart.chartId||!UUID.test(chart.chartId))errors.push("chartId must be a UUID");if(!chart.originalId||!UUID.test(chart.originalId))errors.push("originalId must be a UUID");if(!Number.isSafeInteger(chart.revision)||chart.revision!<0)errors.push("revision is invalid");if(typeof chart.title!=="string"||typeof chart.artist!=="string")errors.push("chart metadata is invalid");if(!Number.isInteger(chart.transposeSemitones)||chart.transposeSemitones! < -12||chart.transposeSemitones!>12)errors.push("transposeSemitones is invalid");if(!Number.isInteger(chart.capo)||chart.capo!<0||chart.capo!>12)errors.push("capo is invalid");if(typeof chart.simplify!=="boolean")errors.push("simplify must be boolean");if(!Array.isArray(chart.lines)||chart.lines.some(line=>!line.id||!Array.isArray(line.segments)||line.segments.some(segment=>typeof segment.text!=="string"||(segment.chord!==undefined&&typeof segment.chord!=="string"))))errors.push("chart lines are invalid");if(!chart.updatedAt||Number.isNaN(Date.parse(chart.updatedAt)))errors.push("updatedAt must be an ISO date-time");return errors}
+export function userChartErrors(value:unknown):string[]{if(!value||typeof value!=="object")return["chart must be an object"];const chart=value as Partial<UserChartV1>,errors:string[]=[];if(chart.schema!=="atarang.chart/1")errors.push("schema must be atarang.chart/1");if(!chart.chartId||!UUID.test(chart.chartId))errors.push("chartId must be a UUID");if(!chart.originalId||!UUID.test(chart.originalId))errors.push("originalId must be a UUID");if(!Number.isSafeInteger(chart.revision)||chart.revision!<0)errors.push("revision is invalid");if(typeof chart.title!=="string"||typeof chart.artist!=="string")errors.push("chart metadata is invalid");if(!Number.isInteger(chart.transposeSemitones)||chart.transposeSemitones! < -12||chart.transposeSemitones!>12)errors.push("transposeSemitones is invalid");if(!Number.isInteger(chart.capo)||chart.capo!<0||chart.capo!>12)errors.push("capo is invalid");if(!CHORD_COMPLEXITIES.includes(chart.complexity!))errors.push("complexity is invalid");if(!Array.isArray(chart.lines)||chart.lines.some(line=>!line.id||!Array.isArray(line.segments)||line.segments.some(segment=>typeof segment.text!=="string"||(segment.chord!==undefined&&typeof segment.chord!=="string"))))errors.push("chart lines are invalid");if(!chart.updatedAt||Number.isNaN(Date.parse(chart.updatedAt)))errors.push("updatedAt must be an ISO date-time");return errors}
 export function assertUserChart(value:unknown):asserts value is UserChartV1{const errors=userChartErrors(value);if(errors.length)throw new Error(`invalid_chart: ${errors.join("; ")}`)}
+/**
+ * Charts written before simplification had levels, brought forward.
+ *
+ * They stored `simplify: boolean`. Validation is not a place to do this: the
+ * library drops a chart it cannot validate and a restore rejects the entire
+ * backup on one bad chart, so an old library would quietly vanish instead of
+ * gaining the setting it already had. Runs before validation at both reads.
+ */
+export function upgradeUserChart(value:unknown):unknown{
+  if(!value||typeof value!=="object"||CHORD_COMPLEXITIES.includes((value as UserChartV1).complexity))return value;
+  const {simplify,...rest}=value as {simplify?:unknown};
+  return typeof simplify==="boolean"?{...rest,complexity:simplify?"simple":"full"}:value;
+}
 export function userChordErrors(value:unknown):string[]{if(!value||typeof value!=="object")return["user chord must be an object"];const chord=value as Partial<UserChordV1>,errors:string[]=[];if(chord.schema!=="atarang.user-chord/1"||!chord.chordId||!UUID.test(chord.chordId))errors.push("user chord identity is invalid");if(!Number.isSafeInteger(chord.revision)||chord.revision!<0||typeof chord.symbol!=="string"||!CHORD_SYMBOL.test(chord.symbol.trim()))errors.push("user chord metadata is invalid");if(!Array.isArray(chord.frets)||chord.frets.length!==6||chord.frets.every(fret=>fret===null)||chord.frets.some(fret=>fret!==null&&(!Number.isInteger(fret)||fret<0||fret>24)))errors.push("user chord frets are invalid");const fretted=chord.frets?.filter((fret):fret is number=>typeof fret==="number"&&fret>0)??[];if(chord.barreFret!==undefined&&(!Number.isInteger(chord.barreFret)||chord.barreFret<1||chord.barreFret>20||fretted.some(fret=>fret<chord.barreFret!||fret>chord.barreFret!+4)))errors.push("user chord barre is invalid");if(chord.barreFret===undefined&&fretted.some(fret=>fret>5))errors.push("a high-position chord needs a barre fret");if(!chord.updatedAt||Number.isNaN(Date.parse(chord.updatedAt)))errors.push("updatedAt must be an ISO date-time");return errors}
 export function assertUserChord(value:unknown):asserts value is UserChordV1{const errors=userChordErrors(value);if(errors.length)throw new Error(`invalid_user_chord: ${errors.join("; ")}`)}
 export function beatGridErrors(value:unknown):string[]{if(!value||typeof value!=="object")return["beat grid must be an object"];const grid=value as Partial<BeatGridV1>,errors:string[]=[];if(grid.schema!=="atarang.beats/1"||!BEAT_ALGORITHMS.includes(grid.algorithmVersion as BeatAlgorithmV1))errors.push("beat schema or algorithm is invalid");if(!grid.originalId||!UUID.test(grid.originalId))errors.push("originalId must be a UUID");if(!Number.isInteger(grid.revision)||grid.revision!<0)errors.push("revision is invalid");if(typeof grid.bpm!=="number"||grid.bpm<30||grid.bpm>300)errors.push("bpm must be between 30 and 300");if(typeof grid.reliability!=="number"||grid.reliability<0||grid.reliability>1||typeof grid.reliable!=="boolean"||typeof grid.userEdited!=="boolean")errors.push("reliability is invalid");if(!Array.isArray(grid.beats)||grid.beats.some((beat,index,beats)=>!Number.isSafeInteger(beat.timeUs)||beat.timeUs<0||![1,2,3,4].includes(beat.beatInBar)||beat.downbeat!==(beat.beatInBar===1)||(index>0&&beat.beatInBar!==beats[index-1]!.beatInBar%4+1)))errors.push("beats are invalid");if(!grid.updatedAt||Number.isNaN(Date.parse(grid.updatedAt)))errors.push("updatedAt must be an ISO date-time");return errors}

@@ -1,5 +1,5 @@
-import { parseChord } from "./chords";
-import type{UserChordV1}from"@atarang/contracts";
+import { parseChord, simplifyChord, transposeChord } from "./chords";
+import type{ChordComplexityV1,UserChordV1}from"@atarang/contracts";
 
 // Guitar shapes, ported from the iOS ChordShapes catalogue.
 //
@@ -141,6 +141,56 @@ export function chordShapes(symbol: string): ChordShape[] {
   }
   return result.sort((left, right) => difficulty(left) - difficulty(right));
 }
+
+/**
+ * Whether the chord has a grip in open position.
+ *
+ * "In the catalogue" is not enough on its own: the catalogue's F is the
+ * first-fret full barre, which is the exact chord a beginner cannot play. An
+ * open string is what actually makes a shape open, so that is the test.
+ */
+export const isOpenShape = (symbol: string) => chordShapes(symbol).some((shape) => !shape.barreFret && shape.frets.includes(0));
+
+/**
+ * The chord as the chosen level would have it played.
+ *
+ * Transpose and capo are applied to the symbol *before* this runs, because
+ * `beginner` asks whether a grip is open and the only grip that matters is the
+ * one the hand actually makes.
+ */
+export function reduceChord(symbol: string, complexity: ChordComplexityV1): string {
+  if (complexity === "full") return symbol;
+  const parsed = parseChord(symbol);
+  if (!parsed) return symbol;
+  if (complexity === "power") return `${parsed.root}5`;
+  const triad = simplifyChord(symbol);
+  if (complexity === "simple") return triad;
+  // The substitutions a teacher makes, in the order a teacher makes them: keep
+  // the chord if it is already open, otherwise the triad under it, otherwise
+  // the plain major or minor — a diminished chord becomes the minor inside it,
+  // a sus the major it resolves to. When none of them is open the triad stands:
+  // telling someone their song needs an F beats printing an E and letting them
+  // wonder why it sounds wrong.
+  //
+  // No power-chord step, because it could never fire. The only open fifths are
+  // E5, A5 and D5, and all three of those roots already have an open major and
+  // an open minor, so the step before this one has always answered by then.
+  const bass = parsed.bass ? `/${parsed.bass}` : "",
+    quality = simplifyChord(`${parsed.root}${parsed.quality}`).slice(parsed.root.length),
+    nearest = `${parsed.root}${quality === "m" || quality === "dim" ? "m" : ""}${bass}`;
+  return [symbol, triad, nearest].find(isOpenShape) ?? triad;
+}
+
+/** Everything the chord toolbar applies on top of a stored symbol. */
+export interface ChordDisplay { transposeSemitones: number; complexity: ChordComplexityV1 }
+
+/**
+ * A stored chord symbol as the toolbar's settings would print it.
+ *
+ * One function because the order is not free: transposing after reducing would
+ * have `beginner` hunting for open shapes in a key the player is not in.
+ */
+export const displayChord = (symbol: string, { transposeSemitones, complexity }: ChordDisplay) => reduceChord(transposeChord(symbol, transposeSemitones), complexity);
 
 /** The shape to show, or undefined when the catalogue has nothing honest. */
 export function bestChordShape(symbol:string,userChords:readonly UserChordV1[]=[]){const identity=chordShapeKey(symbol),saved=identity?userChords.find(chord=>chordShapeKey(chord.symbol)===identity):undefined;return saved?{frets:[...saved.frets],...(saved.barreFret===undefined?{}:{barreFret:saved.barreFret}),userDefined:true}:chordShapes(symbol)[0]}
