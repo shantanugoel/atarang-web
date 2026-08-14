@@ -10,7 +10,13 @@ dependencies = [
 
 [project.optional-dependencies]
 cpu = ["torch==2.8.0", "torchaudio==2.8.0"]
-cuda = ["torch==2.8.0", "torchaudio==2.8.0"]
+# The cu128 index publishes no aarch64 wheels, so without this marker the lock
+# is unsolvable on ARM even though nothing on an ARM host would ever ask for
+# CUDA. Empty on aarch64 is the honest answer: there is no CUDA build there.
+cuda = [
+  "torch==2.8.0; platform_machine == 'x86_64'",
+  "torchaudio==2.8.0; platform_machine == 'x86_64'",
+]
 
 [project.scripts]
 atarang-worker = "atarang_worker.main:run"

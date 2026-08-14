@@ -10,7 +10,14 @@ COPY models/web models/web
 RUN bun run build
 RUN bun models/web/download.ts
 
-FROM caddy:2.11.4-alpine
+# Two targets, because a deployment whose frontend lives on a static host wants
+# this container as the /api/* proxy and nothing else. Building `proxy` skips
+# the stage above entirely — no bun install, no bundle, no 126 MB of weights —
+# which is the difference between a minute and half an hour on small hardware.
+# The default target is the last stage, so a full-stack build is unchanged.
+FROM caddy:2.11.4-alpine AS proxy
 COPY infra/compose/Caddyfile /etc/caddy/Caddyfile
+
+FROM proxy AS web
 COPY --from=build /src/apps/web/dist /srv/web
 COPY --from=build /src/model-files /srv/web/models/htdemucs-web-onnx

@@ -67,7 +67,10 @@ require-corp` are not optional. Serve unmatched paths with `index.html`.
 **Cloudflare Workers:** `bun run cfdeploy` (build + `wrangler deploy`).
 `wrangler.jsonc` declares assets only — no Worker script, because static asset
 requests are unmetered while Worker invocations are billed and start answering
-429, which here would mean model weights failing to download.
+429, which here would mean model weights failing to download. It also declares
+the custom domains, so the deploy attaches them rather than leaving a manual
+dashboard step to remember; change the `routes` patterns for a different domain,
+whose zone has to be in the same Cloudflare account.
 
 **Without a backend**, cloud separation and YouTube fetching do not disappear: the
 separation sheet, the Library YouTube card and Settings each explain the feature
@@ -94,8 +97,10 @@ and taking whichever answers.
    removes it.
 
 For a cross-origin backend set the API's `ATARANG_PUBLIC_ORIGIN` to the frontend
-origin; it drives CORS, and a backend that will not accept this frontend's origin
-correctly fails the probe.
+origin — the page's address, not the API's own — because it is the single origin
+CORS allows. `compose.backend-only.yaml` (below) makes it a required variable
+rather than one that quietly defaults to localhost. A backend that will not
+accept this frontend's origin correctly fails the probe.
 
 ### The backend (Docker Compose)
 
@@ -105,9 +110,13 @@ Sources live in `services/api`, `services/worker`, `services/acquisition` and
 Before building:
 
 1. Generate `uv.lock` with Python 3.12 and uv; require `uv lock --check` in CI.
-2. Put the official `htdemucs` checkpoint at `models/server/htdemucs.th` and
-   supply its reviewed SHA-256 as both the image build argument and
-   `MODEL_ARTIFACT_SHA256`. The image build fails on a mismatch.
+2. Only if you are running a separation worker (`--profile cpu` or `cuda`): put
+   the official `htdemucs` checkpoint at `models/server/htdemucs.th` and supply
+   its reviewed SHA-256 as both the image build argument and
+   `MODEL_ARTIFACT_SHA256`. The image build fails on a mismatch. The file is
+   gitignored but not dockerignored, so a build from a local checkout picks it
+   up; a build from a fresh clone — anything driven by a git URL, Coolify
+   included — will not have it.
 3. `cd infra/compose && ./create-env.sh .env` (or fill `.env` from
    `.env.example` with random secrets — do not commit it). `YOUTUBE_ENABLED=true`
    only for an operator-approved deployment; the acquisition container pins
@@ -128,6 +137,23 @@ same-origin probe succeeds with no `ATARANG_BACKEND_URL` at all; the default
 `SITE_ADDRESS=:80` expects TLS termination by an existing reverse proxy. Verify
 `/api/v1/health/ready`, `/api/v1/version`, an upload canary, result import and
 explicit result purge.
+
+**API only, frontend hosted elsewhere:** drop both worker overlays and add
+`compose.backend-only.yaml`. Caddy builds from the `proxy` target — the /api/*
+reverse proxy without the bundle — and `PUBLIC_ORIGIN` becomes required, since
+CORS now has a real other origin to allow. Nothing here needs the separation
+checkpoint or torch.
+
+```sh
+PUBLIC_ORIGIN=https://atarang.app docker compose -f infra/compose/compose.yaml -f infra/compose/compose.backend-only.yaml up -d --build
+```
+
+**ARM hosts** (a Raspberry Pi, an arm64 runner) build as they are: `uv.lock`
+resolves for `aarch64` as well as `x86_64`, and the CUDA extra is marked
+x86-only because the cu128 index publishes no ARM wheels. Separation is the
+caveat rather than the build — htdemucs on a Pi CPU is nowhere near the RTF ≤
+1.5 gate below, so run such a host without a worker and leave separation to the
+browser.
 
 Run `atarang-cleanup` hourly: incomplete uploads expire after 30 minutes,
 failed/cancelled sources within an hour, results after 24 hours. Successful

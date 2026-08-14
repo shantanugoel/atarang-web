@@ -8,7 +8,12 @@ dependencies = []
 members = ["services/api", "services/acquisition", "services/worker", "bench/separation"]
 
 [tool.uv]
-environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+# aarch64 is here so the images build on ARM hardware — a Raspberry Pi host, or
+# any arm64 runner. The lock carries wheels for both; nothing else changes.
+environments = [
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["services/api/tests", "services/worker/tests"]

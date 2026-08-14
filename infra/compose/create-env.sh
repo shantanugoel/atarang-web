@@ -19,7 +19,10 @@ deployment_key="$(openssl rand -hex 32)"
   printf 'MINIO_ROOT_PASSWORD=%s\n' "$minio_root_password"
   printf 'DEPLOYMENT_KEY=%s\n' "$deployment_key"
   printf 'MODEL_ARTIFACT_SHA256=8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4\n'
-  printf 'PUBLIC_ORIGIN=https://atarang.shaanlab.com\n'
+  # The origin of the page that calls the API, not the API's own address. It is
+  # the only origin CORS allows, so pointing it at this deployment's hostname
+  # rejects every request the frontend makes.
+  printf 'PUBLIC_ORIGIN=https://atarang.app\n'
   printf 'SITE_ADDRESS=:80\n'
   printf 'HOST_HTTP_PORT=4173\n'
   printf 'YOUTUBE_ENABLED=true\n'
