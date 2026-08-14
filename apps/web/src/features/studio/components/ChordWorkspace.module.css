@@ -15,3 +15,11 @@
 .empty>svg{width:26px;height:26px;margin-bottom:10px;color:var(--accent-soft)}.spin{animation:chordSpin .9s linear infinite}@keyframes chordSpin{to{transform:rotate(360deg)}}
 .diagram .nut { stroke-width: 3; }
 .diagram .position { fill: var(--text-muted); font: 9px var(--font-mono); }
+/* The chord you are about to reach sits beside the one you are playing, dimmed,
+   so the eye still lands on "now" first. */
+.diagram figcaption em{display:block;margin-bottom:3px;color:var(--text-muted);font:9px var(--font-mono);font-style:normal;letter-spacing:.12em;text-transform:uppercase}
+/* The grid fades and the dots go grey, but the text keeps a token that still
+   clears AA — dimming the whole figure took the 9px role tag to 3.4:1. */
+.upcoming svg{opacity:.55}
+.upcoming circle{fill:var(--text-muted)}
+.upcoming figcaption{color:var(--text-muted)}

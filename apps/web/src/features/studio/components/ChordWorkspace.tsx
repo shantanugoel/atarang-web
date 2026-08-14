@@ -13,6 +13,7 @@ import type { UserChartV1,UserChordV1 } from "@atarang/contracts";
 import {
   chordProIssues,
   exportChordPro,
+  nextChordChange,
   parseChordLine,
   parseChordPro,
   transposeChord,
@@ -31,14 +32,14 @@ import styles from "./ChordWorkspace.module.css";
 
 const FRET_ROWS = 5;
 
-function ChordDiagram({ chord,userChords }: { chord: string;userChords:readonly UserChordV1[] }) {
+function ChordDiagram({ chord,userChords,role }: { chord: string;userChords:readonly UserChordV1[];role?:"Now"|"Next"|undefined }) {
   const shape = bestChordShape(chord,userChords);
   if (!shape) return null;
   // Open shapes are drawn from the nut; a barre form is drawn from its own
   // fret, with the position marked, so the box stays five rows tall.
   const base = shape.barreFret ?? 1;
   return (
-    <figure className={styles.diagram}>
+    <figure className={`${styles.diagram} ${role === "Next" ? styles.upcoming : ""}`}>
       <svg viewBox="0 0 92 104" role="img" aria-label={`${chord} guitar chord diagram`}>
         <title>
           {chord}{shape.barreFret ? ` barre at fret ${shape.barreFret}${shape.rootString ? `, root on the ${shape.rootString}` : ""}` : " in open position"}
@@ -59,7 +60,7 @@ function ChordDiagram({ chord,userChords }: { chord: string;userChords:readonly 
           return <circle key={string} cx={16 + string * 12} cy={18 + (row + 0.5) * 14} r="4" />;
         })}
       </svg>
-      <figcaption>{chord}{shape.userDefined&&<small>Your voicing</small>}</figcaption>
+      <figcaption>{role&&<em>{role}</em>}{chord}{shape.userDefined&&<small>Your voicing</small>}</figcaption>
     </figure>
   );
 }
@@ -98,9 +99,7 @@ export function AnalysisChordRail({
   );
   const shown = (chord: string) => transposeChord(chord, transposeSemitones, simplify),
     current = segments[active],
-    next = segments
-      .slice(active + 1)
-      .find((segment) => segment.chord !== current?.chord);
+    next = nextChordChange(segments, active);
   useEffect(() => {
     const rail = timeline.current,
       button = rail?.children[active] as HTMLElement | undefined;
@@ -245,8 +244,25 @@ export function ChordWorkspace({
     [chart, settings.simplify, settings.transposeSemitones],
   );
   const activeLyrics = lyrics ? activeLyricLine(lyrics,currentTimeUs) : -1;
-  const currentSegment = analysis?.segments.find(segment=>segment.startTimeUs<=currentTimeUs&&currentTimeUs<segment.endTimeUs),
-    diagramChord = selectedChord ?? (currentSegment ? transposeChord(currentSegment.chord,settings.transposeSemitones,settings.simplify) : rendered?.flatMap(line=>line.segments).find(segment=>segment.chord)?.chord);
+  const shown = (chord:string) => transposeChord(chord,settings.transposeSemitones,settings.simplify);
+  // Two shapes, because the hand has to be moving to the next chord while the
+  // current one is still ringing.
+  const segments = analysis?.segments ?? [],
+    currentIndex = segments.findIndex(segment=>segment.startTimeUs<=currentTimeUs&&currentTimeUs<segment.endTimeUs),
+    currentSegment = segments[currentIndex],
+    nextSegment = nextChordChange(segments,currentIndex),
+    chartChords = rendered?.flatMap(line=>line.segments).map(segment=>segment.chord).filter((chord):chord is string=>Boolean(chord)) ?? [],
+    // Picking a chord by hand is a lookup of one shape, not a position in the
+    // song, so there is no honest "next" to show beside it.
+    [now,upcoming] = selectedChord ? [selectedChord,undefined] as const
+      : currentSegment ? [shown(currentSegment.chord),nextSegment&&shown(nextSegment.chord)] as const
+      : [chartChords[0],chartChords.find(chord=>chord!==chartChords[0])] as const,
+    // A symbol with no shape draws nothing — detection emits "N" for a window
+    // with no chord in it — so both slots go through the catalogue first,
+    // rather than leaving a Now/Next marker on a box that never appears.
+    drawable = (chord?:string) => chord && bestChordShape(chord,userChords??[]) ? chord : undefined,
+    nowChord = drawable(now),
+    nextChord = drawable(upcoming);
   const detectedText = () => `{title: ${songTitle ?? "Detected chords"}}\n${analysis?.segments
     .map((segment) => `[${segment.chord}]${Math.floor(segment.startTimeUs / 60_000_000).toString().padStart(2, "0")}:${Math.floor((segment.startTimeUs / 1_000_000) % 60).toString().padStart(2, "0")}`)
     .join("\n") ?? ""}`;
@@ -430,7 +446,11 @@ export function ChordWorkspace({
         <button disabled={panel === "edit"} onClick={edit}><PencilSimple /> Edit</button>
       </div>
       {editor}
-      {diagramChord && <div className={styles.diagrams}><span>{selectedChord ? "Selected chord" : currentSegment ? "Following playback" : "First chart chord"}</span><ChordDiagram chord={diagramChord} userChords={userChords??[]} /></div>}
+      {(nowChord||nextChord) && <div className={styles.diagrams} role="group" aria-label="Chord shapes">
+        <span>{selectedChord ? "Selected chord" : !nowChord ? "Coming up" : currentSegment ? "Following playback" : "Chart start"}</span>
+        {nowChord && <ChordDiagram chord={nowChord} userChords={userChords??[]} role={nextChord?"Now":undefined} />}
+        {nextChord && <ChordDiagram chord={nextChord} userChords={userChords??[]} role={nowChord?"Next":undefined} />}
+      </div>}
       {activeView === "timeline" && analysis?.segments.length ? (
         <div className={styles.detected}>
           <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} transposeSemitones={settings.transposeSemitones} simplify={settings.simplify} follow onChordSelect={setSelectedChord} />

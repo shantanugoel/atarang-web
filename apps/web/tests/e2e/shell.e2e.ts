@@ -230,6 +230,33 @@ test("the studio keeps the view you set when you leave and come back",async({pag
   await expect(page.getByRole("tab",{name:"Chords"})).toHaveAttribute("aria-selected","true");
 });
 
+test("the chord strip shows the shape being played and the one to reach next",async({page,isMobile})=>{
+  const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
+  await page.goto("/library");
+  await page.getByLabel("Choose audio to import").setInputFiles("src/assets/backbeat.mp3");
+  await expect(page).toHaveURL(/\/studio\/[0-9a-f-]+/);
+  await page.getByRole("button",{name:"Skip for now and just play the song"}).click();
+  if(isMobile)await page.getByRole("button",{name:"Song",exact:true}).click();
+  await page.getByRole("tab",{name:"Chords"}).click();
+  const shapes=page.getByRole("group",{name:"Chord shapes"});
+  // Backbeat decodes to G then D, so the pair at the playhead is unambiguous.
+  await expect(shapes.getByRole("img",{name:"G guitar chord diagram"})).toBeVisible({timeout:30_000});
+  await expect(shapes.getByText("Now",{exact:true})).toBeVisible();
+  await expect(shapes.getByRole("img",{name:"D guitar chord diagram"})).toBeVisible();
+  await expect(shapes.getByText("Next",{exact:true})).toBeVisible();
+  // Past the last change there is nothing left to reach, so the pair collapses
+  // to the one shape still sounding rather than inventing a chord after it.
+  await page.getByRole("button",{name:"Forward 10 seconds"}).click();
+  await expect(shapes.getByRole("img",{name:"D guitar chord diagram"})).toBeVisible();
+  await expect(shapes.getByRole("img")).toHaveCount(1);
+  await expect(shapes.getByText("Next",{exact:true})).toBeHidden();
+  // Picking a chord is a lookup of one shape, not a position in the song.
+  await page.getByTitle(/^G · /).click();
+  await expect(shapes.getByText("Selected chord")).toBeVisible();
+  await expect(shapes.getByRole("img")).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
 test("a saved guitar voicing replaces the catalogue across songs",async({page,isMobile})=>{
   const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
   await page.goto("/settings#chords");
