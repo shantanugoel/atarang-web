@@ -15,6 +15,12 @@ services:
     build:
       context: ../..
       dockerfile: infra/images/web.Dockerfile
+      # `proxy` for a deployment whose frontend is hosted elsewhere: Caddy stays
+      # the /api/* reverse proxy and the image skips the bun build and the
+      # weights, which is the difference between a minute and half an hour on
+      # small hardware. A variable rather than an overlay file because the hosts
+      # that run this — Coolify among them — point at one compose file.
+      target: ${WEB_BUILD_TARGET:-web}
     ports: ["${HOST_HTTP_PORT:-4173}:80"]
     networks: [edge, control]
     environment:
@@ -37,7 +43,12 @@ services:
       ATARANG_S3_ENDPOINT_URL: http://object:9000
       ATARANG_S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
       ATARANG_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
-      ATARANG_PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost}
+      # The origin of the page that calls the API, not this deployment's own
+      # address. It is the only origin CORS allows, so a wrong value fails the
+      # frontend's capability probe with nothing visible beyond the cloud
+      # surfaces staying hidden. Required, because localhost is only ever right
+      # by accident and getting it wrong is silent.
+      ATARANG_PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN to the origin of the frontend, e.g. https://atarang.app}
       ATARANG_YOUTUBE_ENABLED: ${YOUTUBE_ENABLED:-false}
       ATARANG_YOUTUBE_ACQUISITION_COMPILED: "true"
     tmpfs: ["/tmp:size=64M,uid=10001,gid=10001,mode=0700"]

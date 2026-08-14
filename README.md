@@ -139,14 +139,14 @@ same-origin probe succeeds with no `ATARANG_BACKEND_URL` at all; the default
 `/api/v1/health/ready`, `/api/v1/version`, an upload canary, result import and
 explicit result purge.
 
-**API only, frontend hosted elsewhere:** drop both worker overlays and add
-`compose.backend-only.yaml`. Caddy builds from the `proxy` target — the /api/*
-reverse proxy without the bundle — and `PUBLIC_ORIGIN` becomes required, since
-CORS now has a real other origin to allow. Nothing here needs the separation
-checkpoint or torch.
+**API only, frontend hosted elsewhere:** set `WEB_BUILD_TARGET=proxy` and drop
+the worker overlay. Caddy is then the `/api/*` reverse proxy without the bundle,
+and nothing in the deployment needs the separation checkpoint or torch. One
+compose file and one variable, so a host with a single compose path — Coolify —
+can run it.
 
 ```sh
-PUBLIC_ORIGIN=https://atarang.app docker compose -f infra/compose/compose.yaml -f infra/compose/compose.backend-only.yaml up -d --build
+WEB_BUILD_TARGET=proxy PUBLIC_ORIGIN=https://atarang.app docker compose -f infra/compose/compose.yaml up -d --build
 ```
 
 **ARM hosts** (a Raspberry Pi, an arm64 runner) build as they are: `uv.lock`

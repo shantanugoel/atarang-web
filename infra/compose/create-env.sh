@@ -23,6 +23,9 @@ deployment_key="$(openssl rand -hex 32)"
   # the only origin CORS allows, so pointing it at this deployment's hostname
   # rejects every request the frontend makes.
   printf 'PUBLIC_ORIGIN=https://atarang.app\n'
+  # 'proxy' builds Caddy as the /api/* reverse proxy only; 'web' also serves the
+  # frontend bundle, for a deployment that is not split across two hosts.
+  printf 'WEB_BUILD_TARGET=proxy\n'
   printf 'SITE_ADDRESS=:80\n'
   printf 'HOST_HTTP_PORT=4173\n'
   printf 'YOUTUBE_ENABLED=true\n'
