@@ -16,7 +16,6 @@ import {
   nextChordChange,
   parseChordLine,
   parseChordPro,
-  transposeChord,
 } from "../../chords/chords";
 import { UNRELIABLE_CONFIDENCE } from "../../analysis/chordDetection";
 import { bestChordShape, displayChord, type ChordDisplay } from "../../chords/shapes";
@@ -74,7 +73,7 @@ export function AnalysisChordRail({
   currentTimeUs = 0,
   seekTo,
   compact = false,
-  display = { transposeSemitones: 0, complexity: "full" },
+  display = { transposeSemitones: 0, complexity: "full", capo: 0 },
   follow = false,
   onChordSelect,
 }: {
@@ -227,7 +226,9 @@ export function ChordWorkspace({
   useEffect(() => {
     if (chart) setSettings({ transposeSemitones: chart.transposeSemitones, complexity: chart.complexity, capo: chart.capo });
   }, [chart?.chartId]);
-  useEffect(()=>setSelectedChord(undefined),[settings.transposeSemitones,settings.complexity]);
+  // A selected chord is a symbol captured under the old settings, so any of
+  // them moving leaves the diagram showing a grip that is no longer in the song.
+  useEffect(()=>setSelectedChord(undefined),[settings.transposeSemitones,settings.complexity,settings.capo]);
   const rendered = useMemo(
     () =>
       chart?.lines.map((line) => ({
@@ -237,7 +238,7 @@ export function ChordWorkspace({
           chord: segment.chord ? displayChord(segment.chord, settings) : undefined,
         })),
       })),
-    [chart, settings.complexity, settings.transposeSemitones],
+    [chart, settings.capo, settings.complexity, settings.transposeSemitones],
   );
   const activeLyrics = lyrics ? activeLyricLine(lyrics,currentTimeUs) : -1;
   const shown = (chord:string) => displayChord(chord, settings);
@@ -453,7 +454,9 @@ export function ChordWorkspace({
       </div>
       {editor}
       {(nowChord||nextChord) && <div className={styles.diagrams} role="group" aria-label="Chord shapes">
-        <span>{selectedChord ? "Selected chord" : !nowChord ? "Coming up" : currentSegment ? "Following playback" : "Chart start"}</span>
+        {/* With a capo on, every symbol here names a grip rather than the
+            chord the room hears, and the difference is worth one clause. */}
+        <span>{selectedChord ? "Selected chord" : !nowChord ? "Coming up" : currentSegment ? "Following playback" : "Chart start"}{settings.capo > 0 ? ` · shapes with capo ${settings.capo}` : ""}</span>
         {nowChord && <ChordDiagram chord={nowChord} userChords={userChords??[]} role={nextChord?"Now":undefined} />}
         {nextChord && <ChordDiagram chord={nextChord} userChords={userChords??[]} role={nowChord?"Next":undefined} />}
       </div>}

@@ -260,6 +260,13 @@ test("the chord strip shows the shape being played and the one to reach next",as
   await page.getByLabel("Simplify").selectOption("power");
   await expect(shapes.getByRole("img",{name:"G5 guitar chord diagram"})).toBeVisible();
   await expect(page.getByTitle(/^D · /)).toContainText("D5");
+  // The reported bug: the capo control moved and nothing on screen did. A capo
+  // at fret 3 means the hand plays E where the room hears G.
+  await page.getByLabel("Simplify").selectOption("full");
+  for(let fret=0;fret<3;fret++)await page.getByRole("button",{name:"Increase capo"}).click();
+  await expect(shapes).toContainText("shapes with capo 3");
+  await expect(shapes.getByRole("img",{name:"E guitar chord diagram"})).toBeVisible();
+  await expect(page.getByTitle(/^D · /)).toContainText("B");
   expect(errors).toEqual([]);
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { bestChordShape, chordShapes, displayChord, isOpenShape, reduceChord } from "./shapes";
-import type{UserChordV1}from"@atarang/contracts";
+import type{ChordComplexityV1,UserChordV1}from"@atarang/contracts";
 
 describe("guitar shape catalogue", () => {
   test("prefers the open shape when there is one", () => {
@@ -79,8 +79,31 @@ describe("guitar shape catalogue", () => {
     // open) and then transpose it to Bm7, which is a barre — beginner would
     // have judged a key the hand is not playing in.
     test("transposes before reducing, so beginner judges the key on screen", () => {
-      expect(displayChord("Am7", { transposeSemitones: 0, complexity: "beginner" })).toBe("Am7");
-      expect(displayChord("Am7", { transposeSemitones: 2, complexity: "beginner" })).toBe("Bm");
+      expect(displayChord("Am7", { transposeSemitones: 0, complexity: "beginner", capo: 0 })).toBe("Am7");
+      expect(displayChord("Am7", { transposeSemitones: 2, complexity: "beginner", capo: 0 })).toBe("Bm");
+    });
+  });
+
+  describe("capo", () => {
+    const grip = (symbol: string, capo: number, complexity: ChordComplexityV1 = "full") => displayChord(symbol, { transposeSemitones: 0, complexity, capo });
+    // The reported bug: the control moved and nothing on screen did.
+    test("moves every chord down by its fret", () => {
+      expect(grip("A", 0)).toBe("A");
+      expect(grip("A", 2)).toBe("G");
+      // Quality and slash bass ride along; a flat-spelled chord stays flat.
+      expect(grip("Bbmaj7/D", 1)).toBe("Amaj7/Db");
+    });
+    test("stacks with transposition rather than replacing it", () => {
+      // Up a tone and capo 2 is the same hand shape as neither applied.
+      expect(displayChord("A", { transposeSemitones: 2, complexity: "full", capo: 2 })).toBe("A");
+      expect(displayChord("A", { transposeSemitones: 2, complexity: "full", capo: 0 })).toBe("B");
+    });
+    // Fitting a capo is how a guitarist turns a barre song into an open one, so
+    // the level has to judge the grip after the capo has moved it.
+    test("lets the open-shapes level see the chord the hand actually makes", () => {
+      expect(grip("Bb", 0, "beginner")).toBe("Bb");
+      expect(grip("Bb", 1, "beginner")).toBe("A");
+      expect(grip("Bb", 3, "beginner")).toBe("G");
     });
   });
 

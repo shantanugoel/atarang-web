@@ -182,15 +182,20 @@ export function reduceChord(symbol: string, complexity: ChordComplexityV1): stri
 }
 
 /** Everything the chord toolbar applies on top of a stored symbol. */
-export interface ChordDisplay { transposeSemitones: number; complexity: ChordComplexityV1 }
+export interface ChordDisplay { transposeSemitones: number; complexity: ChordComplexityV1; capo: number }
 
 /**
  * A stored chord symbol as the toolbar's settings would print it.
  *
+ * A capo shortens every string, so the grip that sounds a chord is the one
+ * named a capo's worth of semitones *below* it: at capo 2 the hand plays G and
+ * the room hears A. Charts print the grip, because the grip is the instruction.
+ *
  * One function because the order is not free: transposing after reducing would
- * have `beginner` hunting for open shapes in a key the player is not in.
+ * have `beginner` hunting for open shapes in a key the player is not in — and
+ * finding open shapes is most of the reason to fit a capo in the first place.
  */
-export const displayChord = (symbol: string, { transposeSemitones, complexity }: ChordDisplay) => reduceChord(transposeChord(symbol, transposeSemitones), complexity);
+export const displayChord = (symbol: string, { transposeSemitones, complexity, capo }: ChordDisplay) => reduceChord(transposeChord(symbol, transposeSemitones - capo), complexity);
 
 /** The shape to show, or undefined when the catalogue has nothing honest. */
 export function bestChordShape(symbol:string,userChords:readonly UserChordV1[]=[]){const identity=chordShapeKey(symbol),saved=identity?userChords.find(chord=>chordShapeKey(chord.symbol)===identity):undefined;return saved?{frets:[...saved.frets],...(saved.barreFret===undefined?{}:{barreFret:saved.barreFret}),userDefined:true}:chordShapes(symbol)[0]}
