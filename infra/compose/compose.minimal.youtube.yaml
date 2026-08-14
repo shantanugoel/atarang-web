@@ -17,9 +17,10 @@ services:
       retries: 8
 
   object:
-    build:
-      context: .
-      dockerfile: infra/images/object.Dockerfile
+    # MinIO source builds are too slow for Coolify's deployment command on ARM.
+    # This multi-arch image keeps the minimal stack deployable; pin the index
+    # digest so a later registry update cannot silently change the server.
+    image: docker.io/coollabsio/minio:latest@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9
     command: [server, /data]
     restart: unless-stopped
     environment:
