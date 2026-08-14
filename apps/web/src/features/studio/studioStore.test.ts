@@ -15,6 +15,11 @@ describe("view state across a remount",()=>{
     state().setChartId("chart-1");
     state().setChordView("lyricsChords");
     state().setLyricsFollowing(false);
+    state().setChordDisplay({transposeSemitones:2,capo:1});
+    state().setChordsFollowing(false);
+    state().setLeadMode("chords");
+    state().adjust("singScale",1);
+    const scale=state().singScale;
     state().openSong("song-a");
     state().resetPractice(240_000_000);
     expect(state().zoom).toBe(8);
@@ -23,6 +28,10 @@ describe("view state across a remount",()=>{
     expect(state().chartId).toBe("chart-1");
     expect(state().chordView).toBe("lyricsChords");
     expect(state().lyricsFollowing).toBe(false);
+    expect(state().chordDisplay).toEqual({transposeSemitones:2,complexity:"full",capo:1});
+    expect(state().chordsFollowing).toBe(false);
+    expect(state().leadMode).toBe("chords");
+    expect(state().singScale).toBe(scale);
   });
 
   test("opening a different song drops what belonged to the last one",()=>{
@@ -31,12 +40,20 @@ describe("view state across a remount",()=>{
     state().setChartId("chart-1");
     state().setTab("chords");
     state().setChordView("chart");
+    state().setChordDisplay({transposeSemitones:2,capo:1});
+    state().setChordsFollowing(false);
+    state().setLeadMode("chords");
+    const scale=state().singScale;
     state().openSong("song-b");
     expect(state().zoom).toBe(1);
     expect(state().chartId).toBeNull();
+    expect(state().chordDisplay).toEqual({transposeSemitones:0,complexity:"full",capo:0});
+    expect(state().chordsFollowing).toBe(true);
     // How this user reads a song, not a property of the song.
     expect(state().tab).toBe("chords");
     expect(state().chordView).toBe("chart");
+    expect(state().leadMode).toBe("chords");
+    expect(state().singScale).toBe(scale);
   });
 });
 

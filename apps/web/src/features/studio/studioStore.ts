@@ -61,6 +61,12 @@ export interface StudioState {
   zoom: number;
   /** Whether timed lyrics should keep the active line centred. Manual scrolling turns this off. */
   lyricsFollowing: boolean;
+  /** The same, for the detected chord rail. Song-scoped, so a new song follows again. */
+  chordsFollowing: boolean;
+  /** Sing-along text size, as a multiplier. How this user reads any song, so it outlives the song. */
+  singScale: number;
+  /** Which half of the lyrics + chords view is shown. */
+  leadMode: "both" | "lyrics" | "chords";
   togglePlaying(): void;
   toggleRecording(): void;
   toggleMetronome(): void;
@@ -88,10 +94,12 @@ export interface StudioState {
   rampSpeed(): void;
   zoomBy(steps: number): void;
   setLyricsFollowing(following: boolean): void;
+  setChordsFollowing(following: boolean): void;
+  setLeadMode(leadMode: StudioState["leadMode"]): void;
   applyPreset(preset: MixPreset): void;
   resetPractice(durationUs: number): void;
   hydratePractice(document: PracticeStateV1, durationUs: number): void;
-  adjust(key: "speed" | "pitch" | "repetitions" | "pause" | "countIn" | "speedRamp", delta: number): void;
+  adjust(key: "speed" | "pitch" | "repetitions" | "pause" | "countIn" | "speedRamp" | "singScale", delta: number): void;
 }
 
 const stems: Record<StemKind, boolean> = { vocals: false, drums: false, bass: false, other: false };
@@ -139,6 +147,9 @@ export const useStudioStore = create<StudioState>((set) => ({
   speedRamp: 0,
   zoom: 1,
   lyricsFollowing: true,
+  chordsFollowing: true,
+  singScale: 1,
+  leadMode: "both",
   togglePlaying: () => set((s) => ({ playing: !s.playing })),
   toggleRecording: () => set((s) => ({ recording: !s.recording, playing: s.recording ? s.playing : true })),
   toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
@@ -149,7 +160,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   setChordDisplay: (change) => set((s) => ({ chordDisplay: { ...s.chordDisplay, ...change } })),
   // A different song, not a remount: the zoom and the chart belong to the song
   // that was open, and the pane and tab are how this user reads any song.
-  openSong: (songId) => set((s) => (s.songId === songId ? {} : { songId, zoom: 1, chartId: null, chordDisplay: { ...DEFAULT_CHORD_DISPLAY } })),
+  openSong: (songId) => set((s) => (s.songId === songId ? {} : { songId, zoom: 1, chartId: null, chordDisplay: { ...DEFAULT_CHORD_DISPLAY }, chordsFollowing: true })),
   setTarget: (target) => set({ target }),
   toggleMute: (stem) => set((s) => ({ muted: { ...s.muted, [stem]: !s.muted[stem] } })),
   toggleSolo: (stem) => set((s) => ({ soloed: { ...s.soloed, [stem]: !s.soloed[stem] } })),
@@ -173,6 +184,8 @@ export const useStudioStore = create<StudioState>((set) => ({
   rampSpeed: () => set((state) => (state.speedRamp ? { speed: Math.min(1, Math.round((state.speed + state.speedRamp / 100) * 100) / 100) } : {})),
   zoomBy: (steps) => set((state) => ({ zoom: stepZoom(state.zoom, steps) })),
   setLyricsFollowing: (lyricsFollowing) => set({ lyricsFollowing }),
+  setChordsFollowing: (chordsFollowing) => set({ chordsFollowing }),
+  setLeadMode: (leadMode) => set({ leadMode }),
   // Each preset is the defaults plus one change, which is what makes them safe
   // to tap: any of them is a whole mix, not a modifier on the last one, and
   // Balanced is always the way back.
@@ -191,7 +204,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   resetPractice: (durationUs) => set({ target:"vocals",muted:{...stems},soloed:{...stems},levels:{...defaultLevels},pan:{...centered},speed:1,pitch:0,repetitions:4,pause:2,countIn:2,metronome:true,loopEnabled:false,loopStartUs:0,loopEndUs:Math.max(MIN_LOOP_US,durationUs),sections:[],speedRamp:0 }),
   hydratePractice: (document, durationUs) => set({ target:document.target,muted:{...stems},soloed:{...stems},levels:{...document.stemGainDb},pan:{...(document.stemPan??centered)},speed:document.speed,pitch:document.pitchSemitones,repetitions:document.repetitions,pause:document.pauseSeconds,countIn:document.countIn,metronome:document.metronome,loopEnabled:document.loop.enabled,loopStartUs:Math.min(document.loop.startTimeUs,Math.max(0,durationUs-MIN_LOOP_US)),loopEndUs:Math.min(durationUs,Math.max(document.loop.endTimeUs,MIN_LOOP_US)),sections:document.sections??[],speedRamp:document.speedRampPercent??0 }),
   adjust: (key, delta) => set((s) => {
-    const ranges = { speed: [.5, 1, .05], pitch: [-12, 12, 1], repetitions: [1, 999, 1], pause: [0, 10, 1], countIn: [0, 4, 2], speedRamp: [0, 25, 1] } as const;
+    const ranges = { speed: [.5, 1, .05], pitch: [-12, 12, 1], repetitions: [1, 999, 1], pause: [0, 10, 1], countIn: [0, 4, 2], speedRamp: [0, 25, 1], singScale: [.7, 1.5, .1] } as const;
     const [min, max, step] = ranges[key];
     const value = Math.min(max, Math.max(min, Math.round(((s[key] + delta * step) + Number.EPSILON) * 100) / 100));
     return { [key]: value } as Pick<StudioState, typeof key>;

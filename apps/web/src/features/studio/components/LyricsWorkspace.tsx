@@ -60,12 +60,13 @@ export function LyricsWorkspace({
     following = useStudioStore((state) => state.lyricsFollowing),
     setFollowing = useStudioStore((state) => state.setLyricsFollowing),
     setLoop = useStudioStore((state) => state.setLoop),
+    singScale = useStudioStore((state) => state.singScale),
+    adjust = useStudioStore((state) => state.adjust),
     { document, save } = useLyrics(originalId);
   const {playback}=usePlaybackSession();
   const [searchParams, setSearchParams] = useSearchParams();
   const singAlong = searchParams.get("sing") === "1";
   const [editing, setEditing] = useState(false);
-  const [singScale,setSingScale]=useState(1);
   const [lookupStatus, setLookupStatus] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTitle, setSearchTitle] = useState(songTitle ?? "");
@@ -319,8 +320,8 @@ export function LyricsWorkspace({
                 <button aria-label="Rewind 10 seconds" onClick={()=>seekTo?.(Math.max(0,currentTimeUs/1_000_000-10))}>−10s</button>
                 <button disabled={!playback.ready} onClick={()=>void playback.toggle()}>{playback.playing?"Pause":"Play"}</button>
                 <button aria-label="Forward 10 seconds" onClick={()=>seekTo?.(Math.min((durationUs??currentTimeUs)/1_000_000,currentTimeUs/1_000_000+10))}>+10s</button>
-                <button aria-label="Decrease sing-along text size" onClick={()=>setSingScale(value=>Math.max(.7,value-.1))}>A−</button>
-                <button aria-label="Increase sing-along text size" onClick={()=>setSingScale(value=>Math.min(1.5,value+.1))}>A+</button>
+                <button aria-label="Decrease sing-along text size" onClick={()=>adjust("singScale",-1)}>A−</button>
+                <button aria-label="Increase sing-along text size" onClick={()=>adjust("singScale",1)}>A+</button>
                 <button onClick={toggleSingAlong}><CornersIn /> Exit sing-along</button>
               </>
             ) : <>

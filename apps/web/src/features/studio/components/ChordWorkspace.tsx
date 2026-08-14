@@ -87,9 +87,11 @@ export function AnalysisChordRail({
 }) {
   const analysis = useChordAnalysis(originalId);
   const timeline = useRef<HTMLDivElement>(null);
-  const [following,setFollowing] = useState(true);
+  // Both live in the store: the reset that matters is a new song, and `openSong`
+  // is the only thing that can tell one from the Studio being redrawn.
+  const following = useStudioStore((state) => state.chordsFollowing);
+  const setFollowing = useStudioStore((state) => state.setChordsFollowing);
   const segments = analysis?.segments ?? [];
-  useEffect(() => setFollowing(true),[originalId]);
   const active = Math.max(
     0,
     segments.findIndex(
@@ -205,7 +207,8 @@ export function ChordWorkspace({
     setTab = useStudioStore((state) => state.setTab),
     settings = useStudioStore((state) => state.chordDisplay),
     setSettings = useStudioStore((state) => state.setChordDisplay),
-    [leadMode,setLeadMode] = useState<"both"|"lyrics"|"chords">("both"),
+    leadMode = useStudioStore((state) => state.leadMode),
+    setLeadMode = useStudioStore((state) => state.setLeadMode),
     [selectedChord,setSelectedChord] = useState<string>(),
     [panel, setPanel] = useState<"paste" | "edit" | null>(null),
     [draft, setDraft] = useState(""),

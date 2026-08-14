@@ -5,10 +5,11 @@ import { importLocalFile, type ImportProgress } from "../../storage/importer";
 import { getBlob, healMissingAudio, removeAnalysis, removeOriginal, removePerformance, removeSeparation } from "../../storage/repositories";
 import { fileForOpfsPath } from "../../storage/opfs";
 import { importSeparationPackage } from "../separation/separationImporter";
-import { cloudCapabilities, getCloudConfiguration, runYouTubeSeparation, type CloudProgress } from "../separation/cloudClient";
+import { cloudCapabilities, getCloudConfiguration, runYouTubeSeparation } from "../separation/cloudClient";
 import { REPOSITORY, useCloudAvailability } from "../separation/cloudAvailability";
 import { cloudErrorMessage, stageLabel } from "../separation/stageLabel";
 import { useLibrary } from "./useLibrary";
+import { setYoutubeJob, useYoutubeJob } from "./youtubeJob";
 import styles from "./LibraryPage.module.css";
 import demoUrl from "../../assets/backbeat.mp3";
 import {DEMO_TRACK} from "../studio/useDemoAudio";
@@ -40,8 +41,13 @@ export function LibraryPage() {
   const [youtubeProcessing, setYoutubeProcessing] = useState<"server"|"browser">("server");
   const [youtubeStatus, setYoutubeStatus] = useState<YoutubeStatus>("checking");
   const youtubeEnabled = youtubeStatus === "enabled";
-  const [youtubeProgress, setYoutubeProgress] = useState<CloudProgress | null>(null);
-  const youtubeController = useRef<AbortController | null>(null);
+  // A YouTube fetch is a property of the browser, not of this page: it keeps
+  // running when the Library unmounts, so its progress, its Cancel button and
+  // its outcome have to survive the same trip.
+  const youtubeProgress = useYoutubeJob((state) => state.cloud);
+  const youtubeImport = useYoutubeJob((state) => state.imported);
+  const youtubeController = useYoutubeJob((state) => state.controller);
+  const youtubeError = useYoutubeJob((state) => state.error);
   const inputRef = useRef<HTMLInputElement>(null);
   const [reimportId, setReimportId] = useState("");
   const reimportRef = useRef<HTMLInputElement>(null);
@@ -52,7 +58,12 @@ export function LibraryPage() {
   const visiblePerformances=performances.filter(take=>{const song=originalById.get(take.originalId);return `${song?.title??""} ${song?.artist??""}`.toLowerCase().includes(query.toLowerCase())});
   const availability = useCloudAvailability();
   const cloud = getCloudConfiguration();
-  const importing = progress !== null || youtubeProgress !== null;
+  // The Library's own file import and the import step of a YouTube fetch draw
+  // the same bar; only one of them can be running.
+  const shownProgress = progress ?? youtubeImport;
+  const shownError = error || youtubeError;
+  const dismissError = () => { setError(""); setYoutubeJob({ error: "" }); };
+  const importing = shownProgress !== null || youtubeProgress !== null;
   const youtubeIntro =
     youtubeStatus === "enabled" ? "Your server fetches the audio and reuses anything it already has. Choose where the stems are made."
     : youtubeStatus === "disabled" ? "This server has YouTube fetching turned off."
@@ -90,7 +101,7 @@ export function LibraryPage() {
 
   const importFile = async (file?: File) => {
     if (!file || importing) return;
-    setError("");
+    dismissError();
     try {
       const song = await importLocalFile(file, setProgress);
       setProgress(null);
@@ -110,7 +121,7 @@ export function LibraryPage() {
   const reimport = async (file?: File) => {
     const id = reimportId; setReimportId("");
     if (!file || !id || importing) return;
-    setError("");
+    dismissError();
     try {
       const replacement = await importLocalFile(file, setProgress);
       setProgress(null);
@@ -122,20 +133,23 @@ export function LibraryPage() {
     } finally { if (reimportRef.current) reimportRef.current.value = ""; }
   };
 
-  const progressPercent = progress?.totalBytes ? Math.round(progress.completedBytes / progress.totalBytes * 100) : 0;
+  const progressPercent = shownProgress?.totalBytes ? Math.round(shownProgress.completedBytes / shownProgress.totalBytes * 100) : 0;
+  // Every result of this goes to the job rather than to local state, because by
+  // the time any of them arrives the Library may well not be on screen.
   const fetchYoutube = async () => {
     if (!cloud || !youtubeEnabled || !rightsConfirmed || importing) return;
-    setError("");
-    const controller = new AbortController(); youtubeController.current = controller;
+    dismissError();
+    const controller = new AbortController();
+    setYoutubeJob({ controller });
     try {
-      const result = await runYouTubeSeparation(youtubeUrl, cloud, setYoutubeProgress, controller.signal, (file) => importLocalFile(file, setProgress), youtubeProcessing);
+      const result = await runYouTubeSeparation(youtubeUrl, cloud, (cloudProgress) => setYoutubeJob({ cloud: cloudProgress }), controller.signal, (file) => importLocalFile(file, (imported) => setYoutubeJob({ imported })), youtubeProcessing);
       if(result.files)await importSeparationPackage(result.original, result.files, () => undefined);
-      try { await result.purge(); } catch { setError("Imported. The server still holds a temporary copy and will delete it on its own schedule."); }
+      try { await result.purge(); } catch { setYoutubeJob({ error: "Imported. The server still holds a temporary copy and will delete it on its own schedule." }); }
       setYoutubeUrl(""); setRightsConfirmed(false);
       await navigate(`/studio/${result.original.id}${result.files ? "" : "?separate=1"}`);
     } catch (caught) {
-      setError(controller.signal.aborted ? "YouTube fetch cancelled. Anything already imported into your Library is kept." : errorText[caught instanceof Error ? caught.message : ""] ?? cloudErrorMessage(caught));
-    } finally { setProgress(null); setYoutubeProgress(null); youtubeController.current = null; }
+      setYoutubeJob({ error: controller.signal.aborted ? "YouTube fetch cancelled. Anything already imported into your Library is kept." : errorText[caught instanceof Error ? caught.message : ""] ?? cloudErrorMessage(caught) });
+    } finally { setYoutubeJob({ cloud: null, imported: null, controller: null }); }
   };
   const removeSong = async (id: string, title: string) => { if (window.confirm(`Remove “${title}” and its generated audio from this browser? This never affects the source file on your computer.`)) await removeOriginal(id); };
   const removeSongAnalysis=async(id:string,title:string)=>{if(window.confirm(`Remove the waveform, beat grid and chord analysis for “${title}”? The song, lyrics, separation and takes stay.`))await removeAnalysis(id)};
@@ -144,12 +158,12 @@ export function LibraryPage() {
   const selectionIds=category==="performances"?visiblePerformances.map(take=>take.id):visibleSongs.map(song=>song.id);
   const toggleSelected=(id:string)=>setSelected(current=>{const next=new Set(current);if(next.has(id))next.delete(id);else next.add(id);return next});
   const removeSelected=async()=>{if(!selected.size)return;const label=category==="originals"?"songs and their generated assets":category==="separated"?"separations (the originals and takes stay)":"recorded takes";if(!window.confirm(`Remove ${selected.size} selected ${label}?`))return;try{for(const id of selected)await(category==="originals"?removeOriginal(id):category==="separated"?removeSeparation(id):removePerformance(id));setSelected(new Set())}catch{setError("Some selected items could not be removed. Nothing still referenced was deleted.")}};
-  const addDemo=async()=>{if(importing)return;setError("");try{const response=await fetch(new URL(demoUrl,import.meta.url));const blob=await response.blob();const song=await importLocalFile(new File([blob],`${DEMO_TRACK.title}.mp3`,{type:"audio/mpeg"}),setProgress);setProgress(null);await navigate(`/studio/${song.id}?separate=1`)}catch(caught){setProgress(null);setError(errorText[caught instanceof Error?caught.message:""]??"The bundled demo could not be added. Your existing library was not changed.")}};
+  const addDemo=async()=>{if(importing)return;dismissError();try{const response=await fetch(new URL(demoUrl,import.meta.url));const blob=await response.blob();const song=await importLocalFile(new File([blob],`${DEMO_TRACK.title}.mp3`,{type:"audio/mpeg"}),setProgress);setProgress(null);await navigate(`/studio/${song.id}?separate=1`)}catch(caught){setProgress(null);setError(errorText[caught instanceof Error?caught.message:""]??"The bundled demo could not be added. Your existing library was not changed.")}};
   return <div className={styles.page} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void importFile(event.dataTransfer.files[0]); }}>
     <header><div><h1>Library</h1><p>Your music stays in this browser.</p></div></header>
-    {progress && <div className={styles.progress} role="status"><SpinnerGap className={styles.spin}/><div><strong>{progress.phase === "preflight" ? "Checking storage and audio" : progress.phase === "writing" ? "Copying into this browser" : progress.phase === "verifying" ? "Checking the copy is identical" : "Adding to your Library"}</strong><span>{progress.phase === "preflight" ? "Nothing is added to your Library until the copy has been checked." : `${progressPercent}% complete`}</span></div><progress max="100" value={progressPercent}/></div>}
-    {youtubeProgress && <div className={styles.progress} role="status"><SpinnerGap className={styles.spin}/><div><strong>{stageLabel(youtubeProgress.stage)}</strong><span>{Math.round(youtubeProgress.progress*100)}% · videos this server has already fetched are reused</span></div><progress max="100" value={youtubeProgress.progress*100}/><button onClick={()=>youtubeController.current?.abort(new Error("cancelled"))}>Cancel</button></div>}
-    {error && <div className={styles.error} role="alert"><WarningCircle weight="fill"/><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
+    {shownProgress && <div className={styles.progress} role="status"><SpinnerGap className={styles.spin}/><div><strong>{shownProgress.phase === "preflight" ? "Checking storage and audio" : shownProgress.phase === "writing" ? "Copying into this browser" : shownProgress.phase === "verifying" ? "Checking the copy is identical" : "Adding to your Library"}</strong><span>{shownProgress.phase === "preflight" ? "Nothing is added to your Library until the copy has been checked." : `${progressPercent}% complete`}</span></div><progress max="100" value={progressPercent}/></div>}
+    {youtubeProgress && <div className={styles.progress} role="status"><SpinnerGap className={styles.spin}/><div><strong>{stageLabel(youtubeProgress.stage)}</strong><span>{Math.round(youtubeProgress.progress*100)}% · videos this server has already fetched are reused</span></div><progress max="100" value={youtubeProgress.progress*100}/><button onClick={()=>youtubeController?.abort(new Error("cancelled"))}>Cancel</button></div>}
+    {shownError && <div className={styles.error} role="alert"><WarningCircle weight="fill"/><span>{shownError}</span><button onClick={dismissError}>Dismiss</button></div>}
     <div className={styles.acquisition}><section className={styles.localImport} aria-labelledby="import-heading"><FileAudio weight="fill"/><div><h2 id="import-heading">Import local audio</h2><p>Choose a song from this device. The verified copy stays in this browser.</p></div><button className={styles.import} disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? <SpinnerGap className={styles.spin}/> : <Plus weight="bold"/>}{importing ? "Importing…" : "Choose audio"}</button><input ref={inputRef} className="sr-only" aria-label="Choose audio to import" type="file" accept="audio/*,.flac" onChange={(event) => void importFile(event.target.files?.[0])}/></section><section className={styles.youtube} aria-labelledby="youtube-heading"><YoutubeLogo weight="fill"/><div><h2 id="youtube-heading">Fetch from YouTube</h2><p>{youtubeIntro}</p>{youtubeStatus==="absent"&&<p><a href={REPOSITORY} target="_blank" rel="noreferrer">Check GitHub to see how to host your own</a></p>}</div>{youtubeEnabled&&<form onSubmit={event=>{event.preventDefault();void fetchYoutube()}}><label><span>YouTube URL</span><input type="url" value={youtubeUrl} onChange={event=>setYoutubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=…" required/></label><fieldset className={styles.processing}><legend>Separation</legend><label><input type="radio" name="youtube-processing" value="server" checked={youtubeProcessing==="server"} onChange={()=>setYoutubeProcessing("server")}/><span><b>Separate on server</b> Uses this host’s GPU and imports four finished stems.</span></label><label><input type="radio" name="youtube-processing" value="browser" checked={youtubeProcessing==="browser"} onChange={()=>setYoutubeProcessing("browser")}/><span><b>Fetch only; separate in this browser</b> Imports the source, then opens Studio for local separation.</span></label></fieldset><label className={styles.rights}><input type="checkbox" checked={rightsConfirmed} onChange={event=>setRightsConfirmed(event.target.checked)}/><span>I confirm I am authorized to download and process this content.</span></label><button disabled={!youtubeUrl||!rightsConfirmed||importing}>{youtubeProgress?"Working…":youtubeProcessing==="server"?"Fetch and separate":"Fetch to browser"}</button></form>}</section></div>
     <nav className={styles.categories} aria-label="Library category">{(["originals","separated","performances"] as const).map(item=><button key={item} aria-current={category===item?"page":undefined} onClick={()=>setCategory(item)}>{item[0]!.toUpperCase()+item.slice(1)}<span>{item==="performances"?performances.length:item==="separated"?songs.filter(song=>"separated" in song&&song.separated).length:songs.length+(songs.some(song=>song.contentSha256===DEMO_TRACK.sha256)?0:1)}</span><small>{formatBytes(categoryUsage[item])}</small></button>)}</nav>
     <div className={styles.toolbar}><label><MagnifyingGlass/><span className="sr-only">Search library</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${category}`}/></label>{selected.size?<button className={styles.bulkRemove} onClick={()=>void removeSelected()}><Trash/>Remove selected ({selected.size})</button>:<span className={styles.sortNote}><ClockCounterClockwise/> Newest first</span>}</div>
