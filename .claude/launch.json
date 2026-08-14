@@ -2,6 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "atarang-dev",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--cwd", "apps/web", "dev"],
+      "port": 3000,
+      "autoPort": true
+    },
+    {
       "name": "atarang-preview",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "--cwd", "apps/web", "preview"],
