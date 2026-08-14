@@ -18,10 +18,13 @@ finds out by asking.
   a JSON content type.
 - **The Compose deployment needs no setup.** Caddy reverse-proxies `/api/*`, so
   the same-origin probe succeeds and cloud works as it always has.
-- **The backend address ships with the build.** `build.ts` resolves it from
-  `ATARANG_BACKEND_URL`, defaulting to the `DEFAULT_BACKEND_URL` constant it
-  declares, and writes `src/generated/cloud-config.ts` (committed, like the
-  other generated constants). It is a hostname, not a secret, and whether it
+- **The backend address ships with the build.** The default is
+  `DEFAULT_BACKEND_ORIGIN` in `cloudAvailability.ts`; `build.ts` reads it for the
+  CSP and substitutes `ATARANG_BACKEND_URL` over it into the bundle. It is
+  deliberately *not* a generated file: unlike the other `src/generated/`
+  constants, which are deterministic functions of committed inputs, this value
+  follows the environment, so a committed copy would be rewritten by any command
+  that built with a different one. It is a hostname, not a secret, and whether it
   answers *is* the detection: a LAN-only backend resolves publicly but routes
   nowhere else, so one bundle offers cloud to whoever hosts it and hides it from
   everyone else. `ATARANG_BACKEND_URL=` (empty) restricts the app to its own

@@ -1,5 +1,18 @@
 import { useEffect, useState } from "react";
-import { backendOrigin } from "../../generated/cloud-config";
+
+// The backend the app looks for when the page's own origin does not serve the
+// API. Not a secret — it is a hostname, and whether it answers is the whole
+// detection. A LAN-only backend resolves publicly but routes nowhere else, so
+// one bundle offers cloud to whoever hosts it and hides it from everyone else.
+export const DEFAULT_BACKEND_ORIGIN = "https://atarang.shaanlab.com";
+
+// ATARANG_BACKEND_URL overrides the default, substituted into the bundle by
+// build.ts. It is injected rather than written to a generated file because its
+// value depends on the environment, and a checked-in file that changes with the
+// environment is one any command can quietly rewrite. Outside a bundle — unit
+// tests — the identifier is undeclared, which only `typeof` may ask about.
+declare const __ATARANG_BACKEND_ORIGIN__: string;
+const backendOrigin = typeof __ATARANG_BACKEND_ORIGIN__ === "string" ? __ATARANG_BACKEND_ORIGIN__ : DEFAULT_BACKEND_ORIGIN;
 
 // Long enough for a LAN round trip, short enough that a hostname routing
 // nowhere does not hold the cloud surfaces on "Checking…" while someone reads.
