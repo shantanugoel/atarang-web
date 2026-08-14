@@ -2,4 +2,3 @@
 # repository-wide whitespace checks noisy.
 IMPLEMENTATION_PLAN.md whitespace=-blank-at-eol,-blank-at-eof
 apps/web/src/vendor/signalsmith-stretch/SignalsmithStretch.mjs whitespace=-blank-at-eol
-models/**/*.onnx filter=lfs diff=lfs merge=lfs -text

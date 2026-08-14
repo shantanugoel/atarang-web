@@ -7,8 +7,8 @@ RUN bun install --frozen-lockfile
 COPY apps/web apps/web
 COPY packages/contracts packages/contracts
 COPY models/web models/web
+COPY model-files model-files
 RUN bun run build
-RUN bun models/web/download.ts
 
 # Two targets, because a deployment whose frontend lives on a static host wants
 # this container as the /api/* proxy and nothing else. Building `proxy` skips

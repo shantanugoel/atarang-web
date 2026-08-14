@@ -9,7 +9,7 @@ uploaded unless you ask for it.
 ## What it does
 
 - **Four-stem separation** — vocals, drums, bass, other. Runs in the browser on a
-  downloaded 126 MB model (WebGPU, CPU fallback), on a server you host, or by
+  checked-in 126 MB model (WebGPU, CPU fallback), on a server you host, or by
   importing stems made elsewhere.
 - **Mixer** — per-stem level, pan, solo, mute, master out, and presets (Balanced,
   Learn, Guide, Play along).
@@ -37,7 +37,6 @@ uploaded unless you ask for it.
 
 ```sh
 bun install
-bun models/web/download.ts   # once, stages the browser separation model
 bun run dev                  # http://localhost:3000, rebuilds on save (reload the tab)
 ```
 
@@ -54,7 +53,6 @@ The build is just files. Everything except cloud separation and YouTube fetching
 works with no server at all.
 
 ```sh
-bun models/web/download.ts   # or the deployment has no browser separation
 bun run build                # apps/web/dist
 ```
 
@@ -188,8 +186,8 @@ separation are not release promises.
 
 MIT unless noted. Vendored Signalsmith Stretch (MIT) carries its notice in
 `apps/web/src/vendor/signalsmith-stretch/`; the bundled CREMA chord model is
-BSD-2-Clause with its notice in `models/chords/`; the separation weights are not
-bundled and are downloaded on request. Mediabunny is MPL-2.0 and, on the server
+BSD-2-Clause with its notice in `models/chords/`; the separation weights are
+checked in under `model-files/`. Mediabunny is MPL-2.0 and, on the server
 side, MinIO is AGPL-3.0 — review both before redistributing an image.
 
 ## Contributing

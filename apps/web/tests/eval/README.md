@@ -72,5 +72,5 @@ by mediabunny, analysed in the worker with the model, and the result is read
 back out of IndexedDB — so what is scored is what a user would have seen.
 
 This measures the mixture path. Chords decoded from separated stems need the
-126 MB separation model staged (`bun models/web/download.ts`) and a separation
-run per track, which is a different and much slower exercise.
+126 MB separation model included in the build and a separation run per track,
+which is a different and much slower exercise.

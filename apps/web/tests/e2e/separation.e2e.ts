@@ -5,9 +5,8 @@ import{expect,test}from"@playwright/test";
  * anyway: import a real song, separate it in this browser, play the result.
  * Unit tests and `tsc` both passed throughout that.
  *
- * Opt-in, because it needs the 126 MB model staged into `model-files/` by
- * `bun models/web/download.ts`, and because on a machine with no WebGPU adapter
- * it runs the whole song through the processor. Run it before a release:
+ * Opt-in, because it runs the 126 MB model and, on a machine with no WebGPU
+ * adapter, the whole song through the processor. Run it before a release:
  *
  *   ATARANG_E2E_SEPARATION=1 bun run test:e2e:separation
  */
@@ -17,7 +16,7 @@ test.describe("local separation",()=>{
 
   test("the bundled demo imports, separates in this browser, and plays back as four stems",async({page,request,isMobile})=>{
     const manifest=await request.get("/models/htdemucs-web-onnx/manifest.json");
-    test.skip(!manifest.ok(),"no browser model staged; run `bun models/web/download.ts` first");
+    test.skip(!manifest.ok(),"browser model is not available in the build");
     // The ONNX runtime prints its own warnings through console.error. Its real
     // failures are tagged [E:onnxruntime and still count.
     const errors:string[]=[];

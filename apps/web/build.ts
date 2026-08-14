@@ -163,17 +163,12 @@ await Bun.write(`${outdir}/_headers`, [
   "",
 ].join("\n"));
 
-// Stage locally downloaded model weights so `bun run preview` can serve the
-// same /models/<id>/ paths the container image publishes. Absent weights are
-// normal: the app treats the model as not installed and says so.
+// Include the checked-in model weights at the same /models/<id>/ paths the
+// container image publishes.
 const modelStage = "../../model-files";
-if (await Bun.file(`${modelStage}/manifest.json`).exists()) {
-  const staged = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: modelStage }));
-  for (const name of staged) await Bun.write(`${outdir}/models/htdemucs-web-onnx/${name}`, Bun.file(`${modelStage}/${name}`));
-  console.log(`Staged ${staged.length} model files for local preview.`);
-} else {
-  console.log("No model-files/ present; run `bun models/web/download.ts` to enable browser separation locally.");
-}
+const staged = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: modelStage }));
+for (const name of staged) await Bun.write(`${outdir}/models/htdemucs-web-onnx/${name}`, Bun.file(`${modelStage}/${name}`));
+console.log(`Staged ${staged.length} model files.`);
 const publicPath = (path: string) => {
   const marker = `${outdir}/`;
   const index = path.lastIndexOf(marker);

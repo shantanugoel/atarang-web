@@ -1,5 +1,3 @@
-import { mkdir } from "node:fs/promises";
-
 interface ModelManifest {
   artifactVersion:string;
   pieces:{name:string;byteLength:number;sha256:string}[];
@@ -7,15 +5,11 @@ interface ModelManifest {
 
 const manifest=await Bun.file("models/web/manifest.json").json() as ModelManifest;
 const output="model-files";
-await mkdir(output,{recursive:true});
 const base=`https://huggingface.co/monteslu/htdemucs-web-onnx/resolve/${manifest.artifactVersion}/`;
 const sha256=async(bytes:ArrayBuffer)=>Buffer.from(await crypto.subtle.digest("SHA-256",bytes)).toString("hex");
 
-// A staged piece is re-hashed rather than re-fetched: a disk read against 126 MB
-// over the network, and `bun run cfdeploy` runs this before every deploy. The
-// test is the same one the download applies, so a truncated or half-written
-// stage is downloaded again instead of being trusted for having the right name,
-// and a bumped artifactVersion invalidates every piece whose bytes changed.
+// A staged piece is re-hashed rather than re-fetched. This also verifies the
+// checked-in model files before a build uses them.
 let fetched=0;
 for(const piece of manifest.pieces){
   const staged=Bun.file(`${output}/${piece.name}`);

@@ -35,9 +35,8 @@ htmlcov/
 *.local
 
 # Downloaded model weights. Manifests and download scripts remain tracked.
-# ONNX is the exception and is tracked through Git LFS (see .gitattributes):
-# the chord model is a build input, so ignoring it meant a fresh clone could
-# not build until someone reran a TensorFlow conversion by hand.
+# The checked-in chord and browser separation models are build inputs. The
+# server checkpoint remains local because it is a separate, much larger model.
 /models/**/*.pt
 /models/**/*.pth
 /models/**/*.th
@@ -58,9 +57,6 @@ core.*
 .vscode/
 .DS_Store
 Thumbs.db
-
-# Local model staging produced by models/web/download.ts
-/model-files/
 
 # Wrangler local state
 .wrangler/
