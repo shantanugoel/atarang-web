@@ -99,9 +99,8 @@ and taking whichever answers.
 
 For a cross-origin backend set the API's `ATARANG_PUBLIC_ORIGIN` to the frontend
 origin — the page's address, not the API's own — because it is the single origin
-CORS allows. `compose.backend-only.yaml` (below) makes it a required variable
-rather than one that quietly defaults to localhost. A backend that will not
-accept this frontend's origin correctly fails the probe.
+CORS allows — and Compose requires `PUBLIC_ORIGIN` rather than defaulting it. A
+backend that will not accept this frontend's origin correctly fails the probe.
 
 ### The backend (Docker Compose)
 
