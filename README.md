@@ -64,7 +64,15 @@ Netlify) works as-is; on any other host, configure it to send the same headers �
 `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy:
 require-corp` are not optional. Serve unmatched paths with `index.html`.
 
-**Cloudflare Workers:** `bun run cfdeploy` (build + `wrangler deploy`).
+**Cloudflare Workers:** `bun run cfdeploy` (stage the model + build +
+`wrangler deploy`). The staging step is in there because a deploy from a clean
+checkout would otherwise ship without the weights and lose browser separation
+silently — there is no error, the feature is simply gone. It re-hashes what is
+already in `model-files/` rather than re-fetching it, so on a machine that has
+them the step costs a fraction of a second. Cloudflare dedupes the same way:
+`wrangler` uploads a manifest of hashes and sends only the pieces the account
+does not already hold, reporting the rest as `already uploaded`.
+
 `wrangler.jsonc` declares assets only — no Worker script, because static asset
 requests are unmetered while Worker invocations are billed and start answering
 429, which here would mean model weights failing to download. It also declares
