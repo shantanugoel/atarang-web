@@ -18,7 +18,7 @@ services:
 
   object:
     build:
-      context: ../..
+      context: .
       dockerfile: infra/images/object.Dockerfile
     command: [server, /data]
     restart: unless-stopped
@@ -30,7 +30,7 @@ services:
 
   api:
     build:
-      context: ../..
+      context: .
       dockerfile: infra/images/api.Dockerfile
     restart: unless-stopped
     expose:
@@ -63,7 +63,7 @@ services:
 
   acquisition:
     build:
-      context: ../..
+      context: .
       dockerfile: infra/images/acquisition.Dockerfile
     restart: unless-stopped
     environment:
