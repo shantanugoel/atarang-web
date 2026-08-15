@@ -25,6 +25,7 @@ import { usePlaybackSession } from "../PlaybackSession";
 import { useStudioStore } from "../studioStore";
 import { useChordAnalysis } from "../../chords/useChordAnalysis";
 import { useLyrics } from "../../lyrics/useLyrics";
+import { useFollowScroll } from "../useFollowScroll";
 import { activeLyricLine } from "../../lyrics/lrc";
 import { uuidV7 } from "../../../storage/ids";
 import styles from "./ChordWorkspace.module.css";
@@ -245,7 +246,10 @@ export function ChordWorkspace({
       })),
     [chart, settings.capo, settings.complexity, settings.transposeSemitones],
   );
-  const activeLyrics = lyrics ? activeLyricLine(lyrics,currentTimeUs) : -1;
+  const activeLyrics = lyrics ? activeLyricLine(lyrics,currentTimeUs) : -1,
+    // Only the lead sheet prints lyric lines to follow; the chart and the
+    // timeline have their own (or no) playhead.
+    follow = useFollowScroll<HTMLButtonElement>(activeLyrics, activeView === "lyricsChords" && !chart);
   const shown = (chord:string) => displayChord(chord, settings);
   // Two shapes, because the hand has to be moving to the next chord while the
   // current one is still ringing.
@@ -423,7 +427,7 @@ export function ChordWorkspace({
     );
   }
   return (
-    <div className={styles.chordWorkspace} role="tabpanel">
+    <div className={styles.chordWorkspace} role="tabpanel" onScroll={follow.onScroll}>
       <div className={styles.toolbar}>
         <label>
           View
@@ -477,6 +481,7 @@ export function ChordWorkspace({
         <div className={styles.leadSheet}>
           <div className={styles.leadModes} aria-label="Lyrics and chords display">
             {(["both","lyrics","chords"] as const).map(mode => <button aria-pressed={leadMode===mode} key={mode} onClick={()=>setLeadMode(mode)}>{mode === "both" ? "Lyrics + chords" : mode === "lyrics" ? "Lyrics only" : "Chords only"}</button>)}
+            {!chart && lyrics && <button onClick={follow.resume}>{follow.following ? "Jump to playing" : "Resume follow"}</button>}
           </div>
           {chart ? <>
               <p>Selected chart · {chart.title}</p>
@@ -494,7 +499,7 @@ export function ChordWorkspace({
                   // Chords only: the wordless segments would otherwise print a
                   // row of empty cells the width of the words they stand in for.
                   parts = alignChords(line,analysis?.segments??[],lyrics.offsetUs).filter(item=>leadMode!=="chords"||item.chord);
-                return <button className={activeLyrics === index ? styles.activeLine : ""} key={line.id} onClick={() => time !== undefined && seekTo?.(time / 1_000_000)}>
+                return <button className={activeLyrics === index ? styles.activeLine : ""} key={line.id} ref={activeLyrics === index ? follow.line : undefined} onClick={() => time !== undefined && seekTo?.(time / 1_000_000)}>
                   <span>{parts.map((item,itemIndex)=><span className={styles.leadSegment} key={itemIndex}>
                     {leadMode !== "lyrics" && item.chord && <b>{shown(item.chord)}</b>}
                     {leadMode !== "chords" && <i>{item.text || " "}</i>}
