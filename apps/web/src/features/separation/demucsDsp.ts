@@ -234,8 +234,14 @@ export class RollingStemOverlapAdd {
 
   #flush(frames: number) {
     if (frames < 0 || frames > DEMUCS_SEGMENT_FRAMES) throw new Error("overlap_window_invalid");
-    const chunks = this.#stems.map((stem) => {
-      const interleaved = new Float32Array(frames * 2);
+    const chunks = this.#stems.map((stem, index) => {
+      // Valid until the next flush. Every caller writes these straight into a
+      // WAV sink or reads them for statistics before asking for more, and at
+      // about eight megabytes a segment they were the largest per-segment
+      // allocation left after the rest of this file was pooled — a third of a
+      // gigabyte of churn over a three-minute song, on a device where that is
+      // what decides whether the tab survives.
+      const interleaved = scratch(`flush${index}`, frames * 2);
       for (let frame = 0; frame < frames; frame++) {
         const weight = this.#weights[frame]!;
         interleaved[frame * 2] = weight > 0 ? stem.left[frame]! / weight : 0;

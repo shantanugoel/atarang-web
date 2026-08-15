@@ -73,7 +73,12 @@ describe("bounded browser Demucs DSP", () => {
   test("overlap-add is exact and memory stays independent of song length", () => {
     const totalFrames = DEMUCS_STRIDE_FRAMES * 3 + 10_000;
     const overlap = new RollingStemOverlapAdd();
+    // A flush hands back scratch that the next one overwrites, which is what
+    // every caller relies on and none of them notice: they write each chunk out
+    // before asking for another. This test is the exception, comparing them all
+    // at the end, so it keeps copies.
     const emitted: Float32Array[][] = [];
+    const keep = (chunks: Float32Array[]) => emitted.push(chunks.map((chunk) => chunk.slice()));
     for (let start = 0; start < totalFrames; start += DEMUCS_STRIDE_FRAMES) {
       const length = Math.min(DEMUCS_SEGMENT_FRAMES, totalFrames - start);
       const stems = DEMUCS_MODEL_STEMS.map((_, stem) => ({
@@ -81,9 +86,9 @@ describe("bounded browser Demucs DSP", () => {
         right: new Float32Array(DEMUCS_SEGMENT_FRAMES).fill(-(stem + 1)),
       }));
       const chunk = overlap.add(start, stems, length, totalFrames);
-      if (chunk) emitted.push(chunk);
+      if (chunk) keep(chunk);
     }
-    emitted.push(overlap.finish(totalFrames));
+    keep(overlap.finish(totalFrames));
     expect(overlap.allocatedSampleSlots).toBe(DEMUCS_SEGMENT_FRAMES * 9);
     for (let stem = 0; stem < 4; stem++) {
       let samples = 0;
