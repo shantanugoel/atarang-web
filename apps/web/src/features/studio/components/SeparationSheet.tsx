@@ -69,6 +69,12 @@ export function SeparationSheet({ original,replacing, onClose, onImportPackage, 
     onLocalFailure("");
     const active = new AbortController();
     controller.current = active;
+    // Shown before the first progress report rather than after it. The song
+    // lease now waits for this tab's own waveform analysis instead of refusing,
+    // so Start can sit for a few seconds before anything reports; leaving the
+    // routes on screen through that would read as a dead button and invite a
+    // second press, which would queue a second separation behind the first.
+    setProgress({ stage: "preflight", progress: 0 });
     try {
       await runLocalSeparation(original, localRoute.model, localRoute.capability, setProgress, active.signal);
       onClose();
