@@ -230,7 +230,16 @@ async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal)
   // so it takes what is left after two cores are reserved for the browser.
   // Measured on ten cores: RTF 2.47 at one thread, 0.85 at four, 0.63 at eight.
   // The cap is there because the gain flattens while the contention does not.
-  ort.env.wasm.numThreads = backend === "wasm" ? Math.min(8, Math.max(1, (navigator.hardwareConcurrency ?? 4) - 2)) : 1;
+  // Two on a phone, and not for the cores. Each thread carries its own scratch
+  // and its share of the arenas, and turning the arena on moved the cost of a
+  // long song into a burst in the first segment or two: every session's arena
+  // grows to its own peak the first time it runs. Which is what a crash that
+  // comes early rather than halfway is telling us — a peak, not accumulation,
+  // and the one part of that peak that multiplies is this number. It is a
+  // straight trade of minutes for finishing at all.
+  ort.env.wasm.numThreads = backend !== "wasm" ? 1
+    : message.constrainedMemory ? 2
+    : Math.min(8, Math.max(1, (navigator.hardwareConcurrency ?? 4) - 2));
   ort.env.webgpu.powerPreference = "high-performance";
   // The pieces run strictly in order, one at a time, so holding all twenty-one
   // sessions holds 126 MB of weights that nothing is reading. On a discrete GPU
