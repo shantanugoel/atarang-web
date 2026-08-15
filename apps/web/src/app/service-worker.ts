@@ -31,6 +31,13 @@ self.addEventListener("activate", (event) => {
   })());
 });
 
+// The only way a waiting build ever takes over: the user pressed Reload on the
+// update notice. Activating on our own would swap the shell out from under a
+// take being recorded.
+self.addEventListener("message", (event) => {
+  if (event.data === "skip-waiting") void (self as unknown as ServiceWorkerGlobalScope).skipWaiting();
+});
+
 self.addEventListener("fetch", (event) => {
   const fetchEvent = event as FetchEvent;
   const request = fetchEvent.request;

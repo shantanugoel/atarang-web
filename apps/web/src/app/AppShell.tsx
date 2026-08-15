@@ -3,6 +3,7 @@ import { matchPath, NavLink, Outlet, useLocation } from "react-router";
 import {useEffect} from "react";
 import {runIntegrityScan} from "../storage/integrity";
 import {StorageNotice} from "./StorageNotice";
+import {UpdateNotice} from "./UpdateNotice";
 import {NowPlayingBar} from "./NowPlayingBar";
 import {PlaybackSessionProvider,usePlaybackSession} from "../features/studio/PlaybackSession";
 import {DEMO_TRACK} from "../features/studio/useDemoAudio";
@@ -60,6 +61,7 @@ export function AppShell() {
   return (
     <PlaybackSessionProvider><PageTitle/><div className={styles.shell}>
       <TopBar />
+      <UpdateNotice />
       <StorageNotice />
       <main className={styles.main}>
         <Outlet />

@@ -251,6 +251,19 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
   expect(errors).toEqual([]);
 });
 
+// A worker's scope is the directory it is served from. Served from its hashed
+// /runtime/ URL it controlled /runtime/ and nothing else, so the offline shell
+// and the whole precache applied to no page at all — and a hashed name is also
+// a name registration.update() can never find twice.
+test("the service worker controls the whole app and can find its own replacement",async({page,request})=>{
+  await page.goto("/studio");
+  expect(new URL(await page.evaluate(async()=>(await navigator.serviceWorker.ready).scope)).pathname).toBe("/");
+  await expect.poll(()=>page.evaluate(()=>navigator.serviceWorker.controller?.scriptURL??null)).toBe(`${new URL(page.url()).origin}/service-worker.js`);
+  // Pinning this file for a year would strand every installed copy on the build
+  // that installed it.
+  expect(await request.get("/precache.json").then(response=>response.json()) as string[]).not.toContain("/service-worker.js");
+});
+
 // The shortcuts are global, so the sheet describing them has to open away from
 // the Studio — and close the way a modal is expected to, which is Escape.
 test("the keymap opens with ? on any page and closes again",async({page})=>{

@@ -1,0 +1,8 @@
+/* Same band as the storage notice, one row above the page. */
+.notice { z-index: 15; display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 8px; padding: 9px 16px; border-bottom: 1px solid var(--line-strong); background: var(--surface-1); color: var(--text-soft); font-size: 12px; }
+.notice > svg { flex: none; width: 18px; height: 18px; color: var(--accent-soft); }
+.notice p { flex: 1 1 320px; min-width: 0; margin: 0; }
+.notice b { color: var(--text); font-weight: 650; }
+.notice code { font: 11px var(--font-mono); }
+.reload { flex: none; margin-left: auto; height: 28px; padding: 0 11px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--surface-2); color: white; font-size: 12px; }
+@media (max-width: 760px) { .notice { padding: 8px 10px; } .reload { margin-left: 0; } }
