@@ -1,6 +1,7 @@
-import { GearSix, FolderOpen, MusicNotesSimple } from "@phosphor-icons/react";
+import { GearSix, FolderOpen, MusicNotesSimple, Guitar } from "@phosphor-icons/react";
 import { matchPath, NavLink, Outlet, useLocation } from "react-router";
-import {useEffect} from "react";
+import {useEffect,useState} from "react";
+import {TunerSheet} from "../features/analysis/TunerSheet";
 import {runIntegrityScan} from "../storage/integrity";
 import {StorageNotice} from "./StorageNotice";
 import {UpdateNotice} from "./UpdateNotice";
@@ -19,6 +20,9 @@ import styles from "./AppShell.module.css";
 function TopBar() {
   const { pathname } = useLocation();
   const { original } = usePlaybackSession();
+  // In the header rather than in the transport: tuning happens before playing,
+  // and often from the Library page where the song is still being chosen.
+  const [tuning, setTuning] = useState(false);
   const studio = original ? `/studio/${original.id}` : "/studio";
   const navigation = [
     { to: studio, label: "Studio" },
@@ -39,9 +43,11 @@ function TopBar() {
         ))}
       </nav>
       <div className={styles.actions}>
-        {pathname.startsWith("/studio") && <NavLink to="/library" className="icon-button" aria-label="Open another song"><FolderOpen aria-hidden /></NavLink>}
-        <NavLink to="/settings" className="icon-button" aria-label="Settings"><GearSix aria-hidden /></NavLink>
+        {pathname.startsWith("/studio") && <NavLink to="/library" className={`icon-button ${styles.compactHide}`} aria-label="Open another song"><FolderOpen aria-hidden /></NavLink>}
+        <button className="icon-button" aria-label="Tuner" onClick={() => setTuning(true)}><Guitar aria-hidden /></button>
+        <NavLink to="/settings" className={`icon-button ${styles.compactHide}`} aria-label="Settings"><GearSix aria-hidden /></NavLink>
       </div>
+      {tuning && <TunerSheet onClose={() => setTuning(false)} />}
     </header>
   );
 }

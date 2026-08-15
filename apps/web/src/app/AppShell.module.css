@@ -28,5 +28,10 @@
   .nav { justify-content: center; gap: 4px; }
   .nav a { min-width: 64px; font-size: 13px; }
   .actions { padding: 0 6px; }
-  .actions > :first-child { display: none; }
+  /* The two shortcuts that duplicate a nav link give up their space first —
+     Library and Settings are both one tap away in the navigation. The tuner has
+     no other way in, so it is the one that stays. This used to be written as
+     `> :first-child`, which hid whichever button happened to come first.
+     Scoped through .actions to outrank the global .icon-button display. */
+  .actions .compactHide { display: none; }
 }

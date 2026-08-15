@@ -1,0 +1,29 @@
+/* Native <dialog>: ::backdrop, Escape and the focus trap are the element's. */
+.sheet {
+  width: min(380px, 100%);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  background: var(--surface-1);
+  box-shadow: 0 24px 80px #000;
+}
+.sheet::backdrop { background: rgba(3, 4, 6, .78); backdrop-filter: blur(5px); }
+.sheet header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line-strong); }
+.sheet h2 { margin: 0; font: 22px var(--font-display); }
+.sheet header button { display: grid; place-items: center; width: 34px; height: 34px; color: var(--text-muted); }
+.sheet header svg { width: 18px; }
+.readout { display: grid; justify-items: center; gap: 4px; padding: 22px 20px 18px; }
+/* Fixed height and tabular digits: the note must not move the layout as it
+   changes, or the whole panel twitches while a peg is being turned. */
+.note { display: flex; align-items: baseline; gap: 3px; height: 62px; font: 56px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.note small { color: var(--text-muted); font: 16px var(--font-mono); }
+.cents { color: var(--text-muted); font: 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.inTune { color: var(--success); }
+.meter { position: relative; width: 100%; height: 30px; margin-top: 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); overflow: hidden; }
+/* The target, drawn as part of the scale rather than as a moving element. */
+.meter::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: 50%; width: 1px; background: var(--line-strong); }
+.needle { position: absolute; top: 3px; bottom: 3px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--accent); }
+.needle.inTune { background: var(--success); }
+.scale { display: flex; justify-content: space-between; width: 100%; color: var(--text-muted); font: 10px var(--font-mono); }
+.hint { margin: 0; color: var(--text-muted); font-size: 12px; text-align: center; }
+.sheet footer { padding: 12px 20px; border-top: 1px solid var(--line-strong); color: var(--text-muted); font-size: 10px; line-height: 1.5; }
