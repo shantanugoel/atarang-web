@@ -192,7 +192,7 @@ test("a stalled storage preflight times out with a persistent explanation",async
   await expect(page.getByRole("alert")).toContainText("storage check did not respond");
 });
 
-test("saved separated songs enable independent stem controls",async({page,isMobile})=>{
+test("saved separated songs enable independent stem controls",async({page,hasTouch,isMobile})=>{
   const errors:string[]=[];page.on("console",message=>{if(message.type()==="error")errors.push(message.text())});page.on("pageerror",error=>errors.push(error.message));
   const originalId="019fef4f-9c77-7a3f-94ca-ef4214a806d1",staleOriginalId="019fef4f-9c77-7a3f-94ca-ef4214a806d0",separationId="019fef4f-9c77-7a3f-94ca-ef4214a806d2",sha="a".repeat(64),now="2026-08-11T00:00:00.000Z";
   await page.addInitScript(()=>{const nodes:StereoPannerNode[]=[];Object.defineProperty(window,"__atarangPanners",{value:nodes});const create=AudioContext.prototype.createStereoPanner;AudioContext.prototype.createStereoPanner=function(){const node=create.call(this);nodes.push(node);return node}});
@@ -233,6 +233,15 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
   await expect.poll(async()=>Number(await vocalMeter.getAttribute("aria-valuenow"))).toBe(0);
   await page.getByRole("button",{name:"Pause",exact:true}).click();
   await expect(page.getByRole("slider",{name:/Master level/})).toHaveValue("0");
+  // On a coarse pointer the fader is a thing you drag with a fingertip, and a
+  // 28px-wide one is a miss. touch-action is what stops that drag being read as
+  // a pan by the pane the mixer sits in.
+  if(hasTouch){
+    expect((await vocals.boundingBox())!.width).toBeGreaterThanOrEqual(38);
+    expect(await vocals.evaluate(element=>getComputedStyle(element).touchAction)).toBe("none");
+    expect(await vocalPan.evaluate(element=>getComputedStyle(element).touchAction)).toBe("none");
+    expect((await page.getByRole("button",{name:"Mute Vocals track",exact:true}).boundingBox())!.height).toBeGreaterThanOrEqual(40);
+  }
   await page.getByRole("link",{name:"Library"}).click();
   await expect(page.getByRole("link",{name:"Separate again"})).toBeVisible();
   await page.getByRole("link",{name:"Separate again"}).click();
@@ -249,6 +258,38 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
   await page.getByRole("button",{name:/^Originals/}).click();
   await expect(page.getByText("Separated fixture",{exact:true})).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+// A tablet on a music stand is the archetypal device for this app, and the gap
+// was never layout — the panes already collapse — but the size of what a finger
+// has to hit. 40px is the floor. The loop lane is the exception: it is a drag
+// target inside a fixed-height transport, so it gets what there is room for.
+test("touch targets in the studio are big enough for a finger",async({page,hasTouch,isMobile})=>{
+  test.skip(!hasTouch,"coarse-pointer layout only");
+  await page.goto("/studio");
+  expect(await page.evaluate(()=>matchMedia("(pointer: coarse)").matches)).toBe(true);
+  const lane=page.locator('[title^="Drag to set the A–B loop"]');
+  await expect(lane).toBeVisible();
+  // A phone gives the lane less, because there it comes out of the waveform.
+  expect((await lane.boundingBox())!.height).toBeGreaterThanOrEqual(isMobile?24:28);
+  // And no row of the transport may end up under the bottom of the screen. The
+  // element's own box stays put while its rows overflow it, so the rows are what
+  // this has to measure — six pixels is the long-standing slack on a short
+  // screen, where the grid is over-constrained and every row is scaled down a
+  // little; anything past that is a control someone cannot reach.
+  expect(await page.evaluate(()=>{const transport=document.querySelector('[aria-label="Waveform and transport"]')!;return Math.max(...[...transport.children].map(row=>row.getBoundingClientRect().bottom))-innerHeight})).toBeLessThanOrEqual(6);
+  const playBox=await page.getByRole("button",{name:"Play",exact:true}).boundingBox();
+  expect(playBox!.y+playBox!.height).toBeLessThanOrEqual(await page.evaluate(()=>innerHeight));
+  // Below 1024 the three panes hide behind a switcher; above it they are all on
+  // screen and there is no switcher to press.
+  const practice=page.getByRole("button",{name:"Practice",exact:true});
+  if(await practice.count()) await practice.click();
+  for(const name of ["Decrease Speed","Increase Speed","Decrease Repetitions","Set loop start at playhead","Tap"]){
+    const box=await page.getByRole("button",{name,exact:true}).boundingBox();
+    expect(Math.min(box!.width,box!.height),`${name} is too small to hit`).toBeGreaterThanOrEqual(40);
+  }
+  const play=await page.getByRole("button",{name:"Play",exact:true}).boundingBox();
+  expect(Math.min(play!.width,play!.height)).toBeGreaterThanOrEqual(40);
 });
 
 // A worker's scope is the directory it is served from. Served from its hashed

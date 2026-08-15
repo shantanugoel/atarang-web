@@ -46,3 +46,20 @@ button.chip:hover{border-color:var(--danger);color:white}
 /* Only skip-to-start and skip-to-end go: seeking by ten seconds and the click
    track are how you practise a bar, so they stay on a phone. */
 @media(max-width:760px){ .transport { grid-template-rows: 84px 84px; }.waveform{padding-inline:10px}.overlay{right:12px;bottom:6px}.controls{grid-template-columns:auto 1fr auto;padding:0 8px}.time{gap:6px}.time strong{font-size:18px}.time b,.time span{display:none}.mainControls{justify-content:center;gap:2px}.mainControls button:first-child,.mainControls button:nth-child(5){display:none}.mainControls button,.secondary button{width:38px;height:38px}.mainControls .play{width:52px;height:46px}.secondary{gap:0;padding-left:6px}.bars{height:43px}}
+/* Touch, after the compact block so it wins at both sizes. The loop lane is a
+   drag target, and 16px of it is a miss with a finger; the extra height comes out
+   of the transport rather than out of the waveform, which is the thing being
+   read. The Studio's transport row is auto-sized, so growing this simply takes
+   the space from the panes above. */
+@media (pointer: coarse) {
+  .times { height: 30px; }
+  .transport { grid-template-rows: 120px 92px; }
+}
+/* A phone has no height to spare — growing the transport there pushes the
+   controls row off the bottom — so the lane takes its room from the waveform
+   instead. A phone is review and playback; the tablet above is the target. */
+@media (pointer: coarse) and (max-width: 760px) {
+  .transport { grid-template-rows: 84px 84px; }
+  .times { height: 26px; }
+  .bars { height: 33px; }
+}

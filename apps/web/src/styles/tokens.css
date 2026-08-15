@@ -24,5 +24,16 @@
   --radius-sm: 4px;
   --radius-md: 7px;
   --topbar-h: 58px;
-  --transport-h: 194px;
+  /* The Studio reserves exactly this for its transport row, so it has to match
+     what Transport.module.css's own rows add up to (plus the top border). An
+     `auto` row instead of this looks tidier and is worse: on a short screen the
+     grid is over-constrained, an auto row gets shrunk, and the controls row
+     quietly renders below the bottom of the screen. The e2e touch-target test
+     measures those rows against the viewport for exactly that reason. */
+  --transport-h: 200px;
 }
+@media (max-width: 760px) { :root { --transport-h: 169px; } }
+/* Touch adds height to the loop lane above the waveform — except on a phone,
+   where it comes out of the waveform instead because there is no height to give. */
+@media (pointer: coarse) { :root { --transport-h: 214px; } }
+@media (pointer: coarse) and (max-width: 760px) { :root { --transport-h: 169px; } }

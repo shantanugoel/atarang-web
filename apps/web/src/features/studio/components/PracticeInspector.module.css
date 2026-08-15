@@ -40,5 +40,20 @@
 .switch[aria-checked="true"] { background: var(--accent); }
 .switch span { display: block; width: 20px; height: 20px; border-radius: 50%; background: white; transform: translateX(0); }
 .switch[aria-checked="true"] span { transform: translateX(22px); }
+/* Steppers are the control this panel is mostly made of, and 38px of it is a
+   miss on a music stand. The rows grow with them rather than clipping. */
+@media (pointer: coarse) {
+  .row { min-height: 64px; }
+  .stepper { height: 44px; grid-template-columns: 44px 1fr 44px; }
+  .tap { height: 44px; }
+  .switch { width: 52px; height: 30px; }
+  .switch span { width: 24px; height: 24px; }
+  .switch[aria-checked="true"] span { transform: translateX(22px); }
+  .saveSection { grid-template-columns: 1fr 44px; }
+  .saveSection input { height: 44px; }
+  .sections li { grid-template-columns: 1fr 38px; }
+  .sections li > button:first-child { height: 44px; }
+}
+
 .hint { margin: 18px 0 0; color: var(--text-muted); font-size: 10px; line-height: 1.8; }
 .hint kbd { color: var(--text-soft); font: 10px var(--font-mono); }

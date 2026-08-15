@@ -9,4 +9,10 @@ export default defineConfig({testDir:"./tests/e2e",testMatch:"**/*.e2e.ts",fully
 // real host over the network: slow, flaky, and answered by a machine that has
 // nothing to do with the change being tested. Tests that want a backend route
 // the base URL's own /api/v1/* instead.
-webServer:{command:"bun run build && bun run preview",url:baseURL,env:{PORT:String(port),ATARANG_BACKEND_URL:""},reuseExistingServer:true,timeout:30_000},projects:[{name:"chromium",use:{...devices["Desktop Chrome"]}},{name:"mobile-chromium",use:{...devices["Pixel 7"]}}]});
+webServer:{command:"bun run build && bun run preview",url:baseURL,env:{PORT:String(port),ATARANG_BACKEND_URL:""},reuseExistingServer:true,timeout:30_000},projects:[{name:"chromium",use:{...devices["Desktop Chrome"]}},{name:"mobile-chromium",use:{...devices["Pixel 7"]}},
+// A tablet on a music stand is the device this product is shaped around, and it
+// is the one combination neither project above covers: a coarse pointer at a
+// width wide enough for the three-pane layout. Only the shell spec runs here —
+// separation and chord accuracy do not change with the pointer, and paying two
+// more minutes per run for them would just get this project switched off.
+{name:"tablet-chromium",testMatch:"**/shell.e2e.ts",use:{...devices["Desktop Chrome"],viewport:{width:1024,height:768},hasTouch:true}}]});
