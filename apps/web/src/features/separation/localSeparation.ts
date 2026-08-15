@@ -41,6 +41,26 @@ export function localSeparationErrorMessage(code:string){
   return userMessage(code,messages,"Browser separation failed. No stems were published.");
 }
 
+/** Whether this device kills the tab rather than slowing down when inference
+ *  asks for too much, which changes three decisions in the worker: intermediates
+ *  go to host memory instead of GPU buffers, large pieces are built and released
+ *  around their own run instead of held, and the CPU path is taken even where an
+ *  adapter reports itself ready.
+ *
+ *  The first two were measured against an iPhone and neither moved the failure:
+ *  it died at the same point in the same piece with 96 MB of pinned skips gone
+ *  and resident weights down from 126 MB to 25. What is left in common is
+ *  WebGPU itself, so on these devices it is not used.
+ *
+ *  iPadOS reports a desktop Safari user agent, so touch points are the half of
+ *  this that catches an iPad. Neither half is visible from inside the worker,
+ *  which is why this is decided here and passed in. */
+export function constrainedMemoryDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+    || (navigator.userAgent.includes("Macintosh") && navigator.maxTouchPoints > 1);
+}
+
 export function probeLocalBrowser(modelArtifactId:string):Promise<LocalBrowserSupport>{
   return new Promise(resolve=>{
     if(!crossOriginIsolated||typeof SharedArrayBuffer==="undefined"){resolve({available:false,reason:"cross_origin_isolation_required"});return}
@@ -117,7 +137,7 @@ async function runUnlocked(original: OriginalRecord, model: ModelRecord, capabil
         if (data.type === "separation/error") finish(reject,new Error(data.code));
       };
       worker.onerror = () => finish(reject,new Error("local_capability_failed"));
-      worker.postMessage({ type: "separation/local", requestId, songId: original.id, generation: 1, operationId, sourceOpfsPath: source.opfsPath, totalFrames: durationFrames, model: { manifest: model.manifest, bindings: model.bindings } });
+      worker.postMessage({ type: "separation/local", requestId, songId: original.id, generation: 1, operationId, sourceOpfsPath: source.opfsPath, totalFrames: durationFrames, constrainedMemory: constrainedMemoryDevice(), model: { manifest: model.manifest, bindings: model.bindings } });
       if (signal?.aborted) cancel();
     });
     if (response.results.length !== 4 || response.peakWorkingSampleSlots !== 343_980 * 9) throw new Error("result_integrity_failed");

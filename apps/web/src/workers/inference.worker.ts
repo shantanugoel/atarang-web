@@ -30,6 +30,7 @@ interface QualificationMessage {
   type: "capability/qualify";
   requestId: string;
   modelArtifactId: string;
+  constrainedMemory?: boolean;
   model: { manifest: ModelArtifactManifestV1; bindings: Record<string, string> };
 }
 interface LocalSeparationMessage {
@@ -40,6 +41,7 @@ interface LocalSeparationMessage {
   operationId: string;
   sourceOpfsPath: string;
   totalFrames: number;
+  constrainedMemory?: boolean;
   model: { manifest: ModelArtifactManifestV1; bindings: Record<string, string> };
 }
 
@@ -163,6 +165,32 @@ async function probe(data: ProbeMessage) {
 
 type ModelExecutionMessage = LocalSeparationMessage | QualificationMessage;
 
+// Above this, a piece is worth building and releasing around its own run rather
+// than holding for the whole song. Ten pieces are over it and hold 124 of the
+// model's 126 MB; the other eleven are rounding error and stay put.
+const RESIDENT_PIECE_BYTES = 4_194_304;
+
+async function createSession(piece: ModelArtifactManifestV1["pieces"][number], bindings: Record<string, string>, backend: DemucsBackend, constrainedMemory: boolean) {
+  const binding = bindings[piece.name];
+  if (!binding) throw new Error("model_integrity_failed");
+  const model = new Uint8Array(await (await modelFileAtPath(binding)).arrayBuffer());
+  const executionProviders: ort.InferenceSession.ExecutionProviderConfig[] = backend === "wasm"
+    ? ["wasm"]
+    : piece.order === 0 ? [{ name: "webgpu", forceCpuNodeNames: CPU_NODES }] : ["webgpu"];
+  return ort.InferenceSession.create(model, {
+    executionProviders,
+    graphOptimizationLevel: "all",
+    // Handing tensors between pieces as GPU buffers is what keeps the chain off
+    // the bus. On the CPU path there is no buffer to hand over, and where the
+    // GPU shares the process's memory it is the wrong trade: the U-Net skips
+    // stay pinned from the encoder to the decoder, which is what put iOS over
+    // its limit halfway through the first segment.
+    ...(backend === "webgpu" && !constrainedMemory ? { preferredOutputLocation: "gpu-buffer" as const } : {}),
+    enableCpuMemArena: false,
+    enableMemPattern: false,
+  });
+}
+
 async function webgpuAdapter() {
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter(options?: unknown): Promise<unknown> } }).gpu;
   if (!gpu) return null;
@@ -171,7 +199,12 @@ async function webgpuAdapter() {
 }
 
 async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal) {
-  const backend: DemucsBackend = (await webgpuAdapter()) ? "webgpu" : "wasm";
+  // An adapter reporting itself ready is not the same as the graph surviving on
+  // it. iOS advertises one and then loses the tab partway through the first
+  // segment — with the skips unpinned and the weights cycled out, so not for
+  // want of room we control. The CPU path has carried Firefox and adapterless
+  // Safari all along; it is slow, and slow beats a tab that disappears.
+  const backend: DemucsBackend = message.constrainedMemory || !(await webgpuAdapter()) ? "wasm" : "webgpu";
   // Not ORT's proxy worker — that is gated on `document` and does nothing from
   // in here. Pointing `mjs` at the staged glue is what unblocks threading:
   // left to the copy inlined in this bundle, Emscripten hands each pthread this
@@ -186,7 +219,25 @@ async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal)
   // The cap is there because the gain flattens while the contention does not.
   ort.env.wasm.numThreads = backend === "wasm" ? Math.min(8, Math.max(1, (navigator.hardwareConcurrency ?? 4) - 2)) : 1;
   ort.env.webgpu.powerPreference = "high-performance";
-  const sessions: ort.InferenceSession[] = [];
+  // The pieces run strictly in order, one at a time, so holding all twenty-one
+  // sessions holds 126 MB of weights that nothing is reading. On a discrete GPU
+  // that is memory the process is not charged for and building them once is the
+  // right trade. Where the GPU shares the process's memory it is what is left
+  // over the limit once the pinned skips are gone, so the ten large pieces are
+  // built and released around their own run and only the eleven small ones —
+  // under 3 MB together, and pure overhead to rebuild — stay resident.
+  //
+  // Load-bearing: this is only safe while outputs live in host memory, which is
+  // the same condition. Releasing a session whose outputs are still GPU buffers
+  // would free them underneath the pieces that consume them.
+  // ponytail: one threshold rather than per-piece tuning. Revisit if the model
+  // is re-exported with a different split.
+  // Not backend-specific: the wasm heap is one allocation that grows and never
+  // gives anything back, so 126 MB of weights held there costs the same as on
+  // the GPU. Outputs are in host memory on both paths here, which is what makes
+  // releasing a session underneath its own outputs safe.
+  const cycleLargePieces = Boolean(message.constrainedMemory);
+  const sessions: (ort.InferenceSession | null)[] = [];
   const reportLoading = (completed: number) => {
     const ratio = completed / message.model.manifest.pieces.length;
     if (message.type === "capability/qualify") {
@@ -199,31 +250,19 @@ async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal)
     for (const piece of message.model.manifest.pieces) {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
       reportLoading(piece.order);
-      const binding = message.model.bindings[piece.name];
-      if (!binding) throw new Error("model_integrity_failed");
-      const model = new Uint8Array(await (await modelFileAtPath(binding)).arrayBuffer());
-      const executionProviders: ort.InferenceSession.ExecutionProviderConfig[] = backend === "wasm"
-        ? ["wasm"]
-        : piece.order === 0 ? [{ name: "webgpu", forceCpuNodeNames: CPU_NODES }] : ["webgpu"];
-      sessions.push(await ort.InferenceSession.create(model, {
-        executionProviders,
-        graphOptimizationLevel: "all",
-        // Handing tensors between pieces as GPU buffers is what keeps the chain
-        // off the bus. On the CPU path there is no buffer to hand over.
-        ...(backend === "webgpu" ? { preferredOutputLocation: "gpu-buffer" as const } : {}),
-        enableCpuMemArena: false,
-        enableMemPattern: false,
-      }));
+      sessions.push(cycleLargePieces && piece.byteLength > RESIDENT_PIECE_BYTES
+        ? null
+        : await createSession(piece, message.model.bindings, backend, Boolean(message.constrainedMemory)));
       reportLoading(piece.order + 1);
     }
     return { sessions, backend };
   } catch (error) {
-    await Promise.allSettled(sessions.map((session) => session.release()));
+    await Promise.allSettled(sessions.map((session) => session?.release()));
     throw error;
   }
 }
 
-async function runChain(message: ModelExecutionMessage, sessions: ort.InferenceSession[], backend: DemucsBackend, left: Float32Array, right: Float32Array, signal: AbortSignal, segmentIndex: number, segmentCount: number) {
+async function runChain(message: ModelExecutionMessage, sessions: (ort.InferenceSession | null)[], backend: DemucsBackend, left: Float32Array, right: Float32Array, signal: AbortSignal, segmentIndex: number, segmentCount: number) {
   const prepared = prepareDemucsInput(left, right);
   const values = new Map<string, ort.Tensor>([
     ["mix", new ort.Tensor("float32", prepared.mix, [1, 2, DEMUCS_SEGMENT_FRAMES])],
@@ -242,21 +281,37 @@ async function runChain(message: ModelExecutionMessage, sessions: ort.InferenceS
         if (!tensor) throw new Error("model_integrity_failed");
         feeds[input] = tensor;
       }
-      const result = await sessions[piece.order]!.run(feeds);
-      for (const output of piece.outputs) {
-        const tensor = result[output];
-        if (!tensor) throw new Error("model_integrity_failed");
-        values.set(output, tensor);
-      }
-      for (const input of piece.inputs) {
-        const remaining = (remainingUses.get(input) ?? 1) - 1;
-        remainingUses.set(input, remaining);
-        if (remaining === 0 && !finalNames.has(input)) {
-          values.get(input)?.dispose();
-          values.delete(input);
+      // loadSessions left a hole for the large pieces when it is not holding
+      // them, so this is where they are built — and released again below, once
+      // the queue has drained and their outputs are read out.
+      const resident = sessions[piece.order];
+      const session = resident ?? await createSession(piece, message.model.bindings, backend, Boolean(message.constrainedMemory));
+      try {
+        const result = await session.run(feeds);
+        for (const output of piece.outputs) {
+          const tensor = result[output];
+          if (!tensor) throw new Error("model_integrity_failed");
+          values.set(output, tensor);
         }
+        // A session output the split does not name is nobody's input, so nothing
+        // below ever disposes it. On the GPU path that is a buffer held until the
+        // session is released, once per piece per segment. Identity rather than
+        // name, so an output returned under two keys is never disposed while the
+        // copy that was kept is still in use.
+        const kept = new Set(piece.outputs.map((output) => result[output]));
+        for (const tensor of Object.values(result)) if (!kept.has(tensor)) tensor.dispose();
+        for (const input of piece.inputs) {
+          const remaining = (remainingUses.get(input) ?? 1) - 1;
+          remainingUses.set(input, remaining);
+          if (remaining === 0 && !finalNames.has(input)) {
+            values.get(input)?.dispose();
+            values.delete(input);
+          }
+        }
+        await device?.queue.onSubmittedWorkDone();
+      } finally {
+        if (!resident) await session.release();
       }
-      await device?.queue.onSubmittedWorkDone();
       await delay(2);
       const completedPieces = segmentIndex * sessions.length + piece.order + 1;
       self.postMessage({ type: "separation/progress", requestId: message.requestId, stage: "separating", progress: 0.1 + 0.78 * completedPieces / (segmentCount * sessions.length) });
@@ -282,7 +337,7 @@ async function qualify(message: QualificationMessage) {
   if (!crossOriginIsolated || typeof SharedArrayBuffer === "undefined") throw new Error("cross_origin_isolation_required");
   const controller = new AbortController();
   controllers.set(message.requestId, controller);
-  const sessions: ort.InferenceSession[] = [];
+  const sessions: (ort.InferenceSession | null)[] = [];
   const totalFrames = DEMUCS_SAMPLE_RATE * 30;
   const segmentCount = Math.ceil(Math.max(1, totalFrames - DEMUCS_SEGMENT_FRAMES) / DEMUCS_STRIDE_FRAMES) + 1;
   const started = performance.now();
@@ -339,7 +394,7 @@ async function qualify(message: QualificationMessage) {
     const peakMemoryBytes = message.model.manifest.totalBytes + DEMUCS_SEGMENT_FRAMES * 9 * 4 + 4 * 2_048 * 336 * 4 * 2;
     self.postMessage({ type: "capability/result", requestId: message.requestId, modelArtifactId: message.modelArtifactId, backend: loaded.backend, status, reason, adapterVendor: info.vendor ?? "unknown", adapterArchitecture: info.architecture ?? "unknown", driverDescription: info.description ?? "", correctnessPassed, rtf, peakMemoryBytes, mixtureCorrelation, energyRatio });
   } finally {
-    await Promise.allSettled(sessions.map((session) => session.release()));
+    await Promise.allSettled(sessions.map((session) => session?.release()));
     controllers.delete(message.requestId);
   }
 }
@@ -427,7 +482,7 @@ async function separateLocal(message: LocalSeparationMessage) {
   const root = await navigator.storage.getDirectory();
   const stagingRoot = await directory(root, ["staging"]);
   const operation = await stagingRoot.getDirectoryHandle(message.operationId, { create: true });
-  const sessions: ort.InferenceSession[] = [];
+  const sessions: (ort.InferenceSession | null)[] = [];
   const sinks = new Map<(typeof DEMUCS_MODEL_STEMS)[number], WavSink>();
   let input: Input | undefined;
   try {
@@ -476,7 +531,7 @@ async function separateLocal(message: LocalSeparationMessage) {
     throw error;
   } finally {
     input?.dispose();
-    await Promise.allSettled(sessions.map((session) => session.release()));
+    await Promise.allSettled(sessions.map((session) => session?.release()));
     controllers.delete(message.requestId);
   }
 }

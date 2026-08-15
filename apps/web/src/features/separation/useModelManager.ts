@@ -6,6 +6,7 @@ import { opfsPathsExist } from "../../storage/opfs";
 import { listCapabilities, listModels, putCapability, putModel } from "../../storage/repositories";
 import { uuidV7 } from "../../storage/ids";
 import { withLocalInferenceLease } from "./inferenceLease";
+import { constrainedMemoryDevice } from "./localSeparation";
 
 type Progress = { completedBytes: number; totalBytes: number; piece: number };
 type QualificationState = { qualifying: boolean; progress: number; capability: CapabilityRecord | null; error: string };
@@ -162,7 +163,7 @@ export function useModelManager() {
           if (data.type === "capability/error") finish(reject, new Error(data.code));
         };
         worker.onerror = () => finish(reject, new Error("local_capability_failed"));
-        worker.postMessage({ type: "capability/qualify", requestId, modelArtifactId, model: { manifest: model.manifest, bindings: model.bindings } });
+        worker.postMessage({ type: "capability/qualify", requestId, modelArtifactId, constrainedMemory: constrainedMemoryDevice(), model: { manifest: model.manifest, bindings: model.bindings } });
       }));
       const now = new Date();
       const identity = platform();
