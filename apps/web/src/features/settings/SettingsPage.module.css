@@ -5,5 +5,6 @@
 /* The readout `dd` is monospace because the rest of this page reports measured
    values; a person's name is not one, so About sets its own voice. */
 .aboutFacts dd{font:14px var(--font-ui)}
+.aboutFacts dd a{color:var(--text);text-decoration:underline;text-underline-offset:3px}.aboutFacts dd a:hover{color:var(--accent-soft)}
 .about{display:flex;align-items:center;gap:18px;margin:6px 0 4px}.mark{flex:none;width:72px;height:72px}.about strong{display:block;font:26px var(--font-display)}.about p{margin:6px 0 0;max-width:52ch;color:var(--text-muted);line-height:1.6}.link{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:0 14px;border:1px solid var(--line-strong);border-radius:var(--radius-sm);color:var(--text-soft);font-size:13px}.link:hover{color:var(--text);border-color:var(--accent)}.link svg{width:15px;color:var(--accent-soft)}@media(max-width:760px){.about{gap:14px}.mark{width:56px;height:56px}.about strong{font-size:22px}}
 .advanced{margin-top:20px;color:var(--text-muted);font-size:12px}.advanced summary{cursor:pointer;color:var(--text-soft)}.advanced p{line-height:1.5}.advanced button{min-height:36px;padding:0 12px;border:1px solid var(--line-strong);border-radius:var(--radius-sm)}
