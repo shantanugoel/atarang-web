@@ -42,11 +42,15 @@ export function StudioPage() {
   const[chordProgress,setChordProgress]=useState<number|null>(null);
   const pane = useStudioStore((s) => s.pane);
   const setPane = useStudioStore((s) => s.setPane);
+  const setTab = useStudioStore((s) => s.setTab);
   const[separationError,setSeparationError]=useState("");
 
   // Chords first decoded from the mixture are re-decoded from the stems, where
   // the drums and the vocal line are no longer voting on the harmony.
   useEffect(()=>{if(!original||!separation)return;let active=true;void ensureStemChordAnalysis(original,separation,fraction=>{if(active)setChordProgress(fraction)}).finally(()=>{if(active)setChordProgress(null)});return()=>{active=false;setChordProgress(null)}},[original,separation]);
+  // A link can name the tab it meant — "Open takes" in the Library lands on
+  // Takes rather than on whatever tab this player last left the Studio on.
+  useEffect(()=>{const wanted=searchParams.get("tab");if(!wanted)return;if(wanted==="lyrics"||wanted==="chords"||wanted==="sheet"||wanted==="takes"){setTab(wanted);setPane("song")}const next=new URLSearchParams(searchParams);next.delete("tab");setSearchParams(next,{replace:true})},[searchParams,setSearchParams,setTab,setPane]);
   useEffect(()=>{if(original&&searchParams.get("separate")==="1"){setSeparationError("");setSeparationSheet(true);setSearchParams({}, {replace:true})}},[original,searchParams,setSearchParams]);
 
   if (original === undefined) return <div className={styles.routeState}><SpinnerGap className={styles.spin}/><span>Opening local audio…</span></div>;
