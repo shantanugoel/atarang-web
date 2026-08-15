@@ -11,10 +11,10 @@ import {
 } from "@phosphor-icons/react";
 import { CHORD_COMPLEXITIES, type ChordComplexityV1,type UserChartV1,type UserChordV1 } from "@atarang/contracts";
 import {
+  alignChords,
   chordProIssues,
   exportChordPro,
   nextChordChange,
-  parseChordLine,
   parseChordPro,
 } from "../../chords/chords";
 import { UNRELIABLE_CONFIDENCE } from "../../analysis/chordDetection";
@@ -491,13 +491,12 @@ export function ChordWorkspace({
               <AnalysisChordRail originalId={originalId} currentTimeUs={currentTimeUs} seekTo={seekTo} compact display={settings} />
               {lyrics.lines.map((line,index) => {
                 const time = line.startTimeUs === undefined ? undefined : line.startTimeUs + lyrics.offsetUs,
-                  segment = time === undefined ? undefined : analysis?.segments.find(item => item.startTimeUs <= time && time < item.endTimeUs),
-                  chord = segment ? shown(segment.chord) : undefined,
-                  inline = parseChordLine(line.text),
-                  hasInline = inline.some(item=>item.chord);
+                  // Chords only: the wordless segments would otherwise print a
+                  // row of empty cells the width of the words they stand in for.
+                  parts = alignChords(line,analysis?.segments??[],lyrics.offsetUs).filter(item=>leadMode!=="chords"||item.chord);
                 return <button className={activeLyrics === index ? styles.activeLine : ""} key={line.id} onClick={() => time !== undefined && seekTo?.(time / 1_000_000)}>
-                  <span>{inline.map((item,itemIndex)=><span className={styles.leadSegment} key={itemIndex}>
-                    {leadMode !== "lyrics" && (item.chord ? <b>{shown(item.chord)}</b> : itemIndex === 0 && !hasInline && chord ? <b>{chord}</b> : null)}
+                  <span>{parts.map((item,itemIndex)=><span className={styles.leadSegment} key={itemIndex}>
+                    {leadMode !== "lyrics" && item.chord && <b>{shown(item.chord)}</b>}
                     {leadMode !== "chords" && <i>{item.text || " "}</i>}
                   </span>)}</span>
                 </button>;
