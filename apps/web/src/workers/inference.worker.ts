@@ -193,8 +193,14 @@ async function createSession(piece: ModelArtifactManifestV1["pieces"][number], b
     // stay pinned from the encoder to the decoder, which is what put iOS over
     // its limit halfway through the first segment.
     ...(backend === "webgpu" && !constrainedMemory ? { preferredOutputLocation: "gpu-buffer" as const } : {}),
-    enableCpuMemArena: false,
-    enableMemPattern: false,
+    // Both off keeps the peak of a single run down, which is the right trade
+    // when the run is the whole story. On the CPU path it is not: every segment
+    // runs the same graph at the same shapes into a wasm heap that grows and
+    // never gives anything back, so planning the allocations once and reusing
+    // them is what stops a long song fragmenting its way past the limit. This
+    // is why a 46-second demo finished and a three-minute song died halfway.
+    enableCpuMemArena: backend === "wasm",
+    enableMemPattern: backend === "wasm",
   });
 }
 
@@ -239,11 +245,13 @@ async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal)
   // would free them underneath the pieces that consume them.
   // ponytail: one threshold rather than per-piece tuning. Revisit if the model
   // is re-exported with a different split.
-  // Not backend-specific: the wasm heap is one allocation that grows and never
-  // gives anything back, so 126 MB of weights held there costs the same as on
-  // the GPU. Outputs are in host memory on both paths here, which is what makes
-  // releasing a session underneath its own outputs safe.
-  const cycleLargePieces = Boolean(message.constrainedMemory);
+  // GPU only, and the earlier reasoning that this was backend-agnostic had it
+  // backwards. Holding 126 MB of weights in the wasm heap is one allocation that
+  // then sits still; cycling them is ten large allocate-and-free pairs per
+  // segment in a heap that only grows and does not coalesce, which is churn
+  // dressed up as thrift. It costs nothing over eight segments and takes the tab
+  // somewhere around the fifteenth.
+  const cycleLargePieces = backend === "webgpu" && Boolean(message.constrainedMemory);
   const sessions: (ort.InferenceSession | null)[] = [];
   const reportLoading = (completed: number) => {
     const ratio = completed / message.model.manifest.pieces.length;
@@ -406,6 +414,32 @@ async function qualify(message: QualificationMessage) {
   }
 }
 
+// The same reason the DSP pools its buffers: a Float32Array's backing store is
+// malloc'd outside JSC's heap, so a few megabytes per segment reads as almost no
+// GC pressure while the process footprint climbs. Decoding allocated roughly six
+// of them per segment, which is nothing over a 46-second demo and a third of a
+// gigabyte over a three-minute song.
+// ponytail: one decode runs at a time — a fresh worker per operation and the
+// inference lease both guarantee it. Per-call arenas if that ever changes.
+const decodePool = new Map<string, Float32Array>();
+function decodeScratch(key: string, length: number) {
+  let buffer = decodePool.get(key);
+  if (!buffer || buffer.length < length) decodePool.set(key, (buffer = new Float32Array(length)));
+  return buffer.length === length ? buffer : buffer.subarray(0, length);
+}
+
+/** As above, but never a view: the decoder writes into these itself, and set()
+ *  and fill() respecting a subarray is a guarantee of the language where
+ *  copyTo() respecting one is a guarantee about somebody else's library. Packet
+ *  sizes are constant within a source anyway, so this allocates once. */
+function decodeExact(key: string, length: number) {
+  const buffer = decodePool.get(key);
+  if (buffer && buffer.length === length) return buffer;
+  const next = new Float32Array(length);
+  decodePool.set(key, next);
+  return next;
+}
+
 async function decodeSegment(track: Awaited<ReturnType<Input["getPrimaryAudioTrack"]>>, startFrame: number, targetFrames: number) {
   if (!track) throw new Error("unsupported_format");
   const sourceRate = await track.getSampleRate();
@@ -414,12 +448,15 @@ async function decodeSegment(track: Awaited<ReturnType<Input["getPrimaryAudioTra
   const endSeconds = (startFrame + targetFrames) / DEMUCS_SAMPLE_RATE;
   const sourceBase = Math.max(0, Math.floor(startSeconds * sourceRate) - 2);
   const sourceEnd = Math.ceil(endSeconds * sourceRate) + 2;
-  const sourceLeft = new Float32Array(sourceEnd - sourceBase);
-  const sourceRight = new Float32Array(sourceEnd - sourceBase);
+  // Written only where decoded samples land, so a reused buffer has to start
+  // clean or a gap carries the previous segment's audio.
+  const sourceLeft = decodeScratch("source.left", sourceEnd - sourceBase).fill(0);
+  const sourceRight = decodeScratch("source.right", sourceEnd - sourceBase).fill(0);
   const sink = new AudioSampleSink(track);
   for await (const sample of sink.samples(startSeconds, endSeconds)) {
-    const left = new Float32Array(sample.numberOfFrames);
-    const right = new Float32Array(sample.numberOfFrames);
+    // Fully overwritten by copyTo, and by set() on the mono path.
+    const left = decodeExact("packet.left", sample.numberOfFrames);
+    const right = decodeExact("packet.right", sample.numberOfFrames);
     sample.copyTo(left, { format: "f32-planar", planeIndex: 0 });
     if (channels > 1) sample.copyTo(right, { format: "f32-planar", planeIndex: 1 });
     else right.set(left);
@@ -432,8 +469,11 @@ async function decodeSegment(track: Awaited<ReturnType<Input["getPrimaryAudioTra
     }
     sample.close();
   }
-  const left = new Float32Array(DEMUCS_SEGMENT_FRAMES);
-  const right = new Float32Array(DEMUCS_SEGMENT_FRAMES);
+  // The tail past targetFrames is the last segment's short read, and the model
+  // is fed the whole window either way, so it has to be silence and not the
+  // segment before it.
+  const left = decodeScratch("out.left", DEMUCS_SEGMENT_FRAMES).fill(0);
+  const right = decodeScratch("out.right", DEMUCS_SEGMENT_FRAMES).fill(0);
   for (let frame = 0; frame < targetFrames; frame++) {
     const sourcePosition = ((startFrame + frame) * sourceRate) / DEMUCS_SAMPLE_RATE - sourceBase;
     const index = Math.floor(sourcePosition);
