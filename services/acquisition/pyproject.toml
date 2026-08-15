@@ -9,6 +9,7 @@ dependencies = [
 
 [project.scripts]
 atarang-acquisition = "atarang_acquisition.main:run"
+atarang-youtube = "atarang_acquisition.ephemeral:run"
 
 [build-system]
 requires = ["hatchling"]
