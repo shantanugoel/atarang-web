@@ -86,6 +86,17 @@ export function LyricsWorkspace({
     else { next.set("sing", "1"); setFollowing(true); }
     setSearchParams(next);
   };
+  useEffect(() => {
+    if (!singAlong) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const next = new URLSearchParams(searchParams);
+      next.delete("sing");
+      setSearchParams(next);
+    };
+    globalThis.addEventListener("keydown", onKey);
+    return () => globalThis.removeEventListener("keydown", onKey);
+  }, [singAlong, searchParams, setSearchParams]);
   const loopLines = (from: number, to: number) => {
     if (!document || !durationUs) return;
     const range = lyricLoopRange(document.lines, from, to, document.offsetUs, durationUs);
