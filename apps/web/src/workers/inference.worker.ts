@@ -13,7 +13,7 @@ import {
   type DemucsBackend,
   type StereoStem,
 } from "../features/separation/demucsDsp";
-import { ortMjsUrl, ortWasmUrl } from "../generated/ort-assets";
+import { ortMjsCpuUrl, ortMjsUrl, ortWasmCpuUrl, ortWasmUrl } from "../generated/ort-assets";
 import { IncrementalSha256 } from "../storage/sha256";
 
 type SyncHandle = {
@@ -184,7 +184,7 @@ async function createSession(piece: ModelArtifactManifestV1["pieces"][number], b
   const executionProviders: ort.InferenceSession.ExecutionProviderConfig[] = backend === "wasm"
     ? ["wasm"]
     : piece.order === 0 ? [{ name: "webgpu", forceCpuNodeNames: CPU_NODES }] : ["webgpu"];
-  return ort.InferenceSession.create(model, {
+  const session = await ort.InferenceSession.create(model, {
     executionProviders,
     graphOptimizationLevel: "all",
     // Handing tensors between pieces as GPU buffers is what keeps the chain off
@@ -202,6 +202,21 @@ async function createSession(piece: ModelArtifactManifestV1["pieces"][number], b
     enableCpuMemArena: backend === "wasm",
     enableMemPattern: backend === "wasm",
   });
+  // create() copies the model into the runtime's own heap, so from here this is
+  // garbage — but garbage a typed array's backing store is malloc'd outside
+  // JSC for, which is to say garbage the collector feels almost nothing for.
+  // Loading the model walks 126 MB past it in twenty-one pieces while another
+  // 126 MB is settling in beside it, and that first pass is what a run that
+  // fails once and then succeeds on the retry looks like. Handing each piece
+  // back at the point it stops being needed costs nothing and does not wait.
+  //
+  // Deliberately not conditional on the device: this is where the desktop e2e
+  // gets to prove that create() is really done with the bytes.
+  // Guarded twice over — transfer is Safari 17.4 and up, and failing to free
+  // memory is never a reason to fail a session that was built correctly.
+  try { (model.buffer as ArrayBuffer & { transfer?(length: number): ArrayBuffer }).transfer?.(0); }
+  catch { /* Collected the slow way instead. */ }
+  return session;
 }
 
 async function webgpuAdapter() {
@@ -224,7 +239,14 @@ async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal)
   // worker's own URL to load, so the pool never finishes starting and the first
   // InferenceSession.create hangs past the 90s watchdog. Loaded from its own
   // URL the glue resolves itself and the threads come up.
-  ort.env.wasm.wasmPaths = { wasm: new URL(ortWasmUrl, self.location.origin).href, mjs: new URL(ortMjsUrl, self.location.origin).href };
+  // Asyncify is what lets the WebGPU provider await the GPU from inside the
+  // graph, and it is the only reason that build is here. On the processor path
+  // it is 23.1 MB of wasm to compile instead of 12.8, plus an unwind buffer, for
+  // a code path never entered. Compiling is paid once and cached after, which is
+  // exactly what a run that fails on the first attempt and succeeds on the
+  // second looks like.
+  const wasmSource = backend === "wasm" ? { wasm: ortWasmCpuUrl, mjs: ortMjsCpuUrl } : { wasm: ortWasmUrl, mjs: ortMjsUrl };
+  ort.env.wasm.wasmPaths = { wasm: new URL(wasmSource.wasm, self.location.origin).href, mjs: new URL(wasmSource.mjs, self.location.origin).href };
   // WebGPU does its work on the GPU and stays on one thread. The CPU path is the
   // only local option on Safari, on Firefox and on machines without an adapter,
   // so it takes what is left after two cores are reserved for the browser.
