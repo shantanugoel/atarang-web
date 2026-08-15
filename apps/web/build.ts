@@ -164,6 +164,16 @@ await Bun.write(`${outdir}/_headers`, [
   "",
 ].join("\n"));
 
+// Installed-app icons, copied rather than generated: they are rasterised from
+// src/assets/icon.svg once by hand, so no build step needs an SVG renderer.
+// Root paths because the manifest is content-hashed into /assets/ and iOS looks
+// for /apple-touch-icon.png with no markup at all.
+for (const name of ["icon-192.png", "icon-512.png", "apple-touch-icon.png"]) {
+  const source = Bun.file(`src/assets/${name}`);
+  if (!(await source.exists())) throw new Error(`Missing app icon src/assets/${name}`);
+  await Bun.write(`${outdir}/${name}`, source);
+}
+
 // Include the checked-in model weights at the same /models/<id>/ paths the
 // container image publishes.
 const modelStage = "../../model-files";
