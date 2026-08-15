@@ -25,7 +25,7 @@ type SyncHandle = {
 };
 interface DownloadMessage { type: "model/download"; requestId: string; manifest: ModelArtifactManifestV1 }
 interface CancelMessage { type: "model/cancel" | "separation/cancel"; requestId: string }
-interface ProbeMessage { type: "capability/probe"; requestId: string; modelArtifactId: string }
+interface ProbeMessage { type: "capability/probe"; requestId: string; modelArtifactId: string; constrainedMemory?: boolean }
 interface QualificationMessage {
   type: "capability/qualify";
   requestId: string;
@@ -145,17 +145,24 @@ async function download(data: DownloadMessage) {
   }
 }
 
+// One rule, read by the probe that tells the reader what is about to happen and
+// by the load that then does it. Split in two, the sheet went on promising
+// WebGPU on a device where the worker had already decided against it.
+const backendFor = (constrainedMemory: boolean | undefined, adapter: unknown): DemucsBackend =>
+  constrainedMemory || !adapter ? "wasm" : "webgpu";
+
 async function probe(data: ProbeMessage) {
   // No adapter is not a dead end: the same graph runs on the WASM execution
   // provider. It is slower, which is a warning, not a refusal.
   const adapter = await webgpuAdapter();
+  const backend = backendFor(data.constrainedMemory, adapter);
   const info = adapter?.info ?? {};
   self.postMessage({
     type: "capability/result",
     requestId: data.requestId,
     modelArtifactId: data.modelArtifactId,
-    backend: adapter ? "webgpu" : "wasm",
-    reason: adapter ? "model_correctness_probe_required" : "cpu_fallback_available",
+    backend,
+    reason: backend === "webgpu" ? "model_correctness_probe_required" : "cpu_fallback_available",
     adapterVendor: info.vendor ?? "unknown",
     adapterArchitecture: info.architecture ?? "unknown",
     driverDescription: info.description ?? "",
@@ -204,7 +211,7 @@ async function loadSessions(message: ModelExecutionMessage, signal: AbortSignal)
   // segment — with the skips unpinned and the weights cycled out, so not for
   // want of room we control. The CPU path has carried Firefox and adapterless
   // Safari all along; it is slow, and slow beats a tab that disappears.
-  const backend: DemucsBackend = message.constrainedMemory || !(await webgpuAdapter()) ? "wasm" : "webgpu";
+  const backend = backendFor(message.constrainedMemory, await webgpuAdapter());
   // Not ORT's proxy worker — that is gated on `document` and does nothing from
   // in here. Pointing `mjs` at the staged glue is what unblocks threading:
   // left to the copy inlined in this bundle, Emscripten hands each pthread this

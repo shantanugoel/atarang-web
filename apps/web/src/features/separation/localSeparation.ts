@@ -23,7 +23,7 @@ export interface LocalBrowserSupport { available:boolean;reason:string;backend?:
 
 export function localSeparationErrorMessage(code:string){
   const messages:Record<string,string>={
-    cpu_fallback_available:"This browser has no WebGPU adapter, so separation runs on the processor. It works, but expect several minutes per song.",
+    cpu_fallback_available:"Separation runs on the processor here. It works, but expect several minutes per song.",
     cross_origin_isolation_required:"Browser separation needs secure cross-origin isolation. Reload this site directly or choose Cloud separation.",
     quota_exceeded:"There is not enough browser storage for four lossless stems. Free browser storage or choose Cloud separation.",
     model_integrity_failed:"The installed browser model is incomplete. Reinstall it from Settings before trying again.",
@@ -70,7 +70,7 @@ export function probeLocalBrowser(modelArtifactId:string):Promise<LocalBrowserSu
     const timeout=window.setTimeout(()=>finish({available:false,reason:"webgpu_probe_timeout"}),10_000);
     worker.onmessage=({data})=>{if(data.requestId!==requestId||data.type!=="capability/result")return;finish({available:true,reason:data.reason,backend:data.backend})};
     worker.onerror=()=>finish({available:false,reason:"webgpu_probe_failed"});
-    worker.postMessage({type:"capability/probe",requestId,modelArtifactId});
+    worker.postMessage({type:"capability/probe",requestId,modelArtifactId,constrainedMemory:constrainedMemoryDevice()});
   });
 }
 
