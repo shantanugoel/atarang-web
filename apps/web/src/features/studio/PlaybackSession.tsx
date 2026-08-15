@@ -8,6 +8,7 @@ import { useDemoAudio } from "./useDemoAudio";
 import { useImportedAudio, type ImportedPlayback } from "./useImportedAudio";
 import { usePracticePersistence } from "./usePracticePersistence";
 import { useSeparatedAudio } from "./useSeparatedAudio";
+import { useWakeLock } from "./wakeLock";
 import { useStudioStore } from "./studioStore";
 import { useWaveform } from "./useWaveform";
 import type { BeatGridV1 } from "@atarang/contracts";
@@ -79,6 +80,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   const playbackSeekBy = playback.seekBy;
 
   usePracticePersistence(original ?? undefined, playback.currentTimeUs, playback.playing, playback.ready, playback.seekTo);
+  useWakeLock(playback.playing);
 
   useEffect(() => { if (routeSongId !== undefined) { setStudioOpened(true); useStudioStore.getState().openSong(routeSongId); } }, [routeSongId]);
   // Re-read on library changes, not only when the song id changes: recovering a
