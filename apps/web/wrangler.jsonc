@@ -21,6 +21,23 @@
   // once, so a fresh account or a recreated Worker lands on the same hostname
   // without anyone remembering the manual step. Needs the zone in the same
   // Cloudflare account; wrangler creates the record and the certificate.
+  // Added by the dashboard's observability setup. Top-level "enabled" is off
+  // because the "logs" block supersedes it; traces stay off (billed separately).
+  "observability": {
+    "enabled": false,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": false,
+      "persist": true,
+      "head_sampling_rate": 1
+    }
+  },
   "routes": [
     { "pattern": "atarang.app", "custom_domain": true },
     { "pattern": "www.atarang.app", "custom_domain": true }
