@@ -16,7 +16,7 @@ environments = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["services/api/tests", "services/worker/tests"]
+testpaths = ["services/api/tests", "services/acquisition/tests", "services/worker/tests"]
 addopts = "-q"
 
 [tool.ruff]
