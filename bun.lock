@@ -10,6 +10,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@atarang/contracts": "workspace:*",
+        "@mediabunny/mp3-encoder": "^1.54.0",
         "@phosphor-icons/react": "^2.1.10",
         "ajv": "^8.17.1",
         "fft.js": "4.0.4",
@@ -168,6 +169,8 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.9", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.0.3", "@jridgewell/sourcemap-codec": "^1.4.10" } }, "sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ=="],
+
+    "@mediabunny/mp3-encoder": ["@mediabunny/mp3-encoder@1.54.0", "", { "peerDependencies": { "mediabunny": "^1.0.0" } }, "sha512-x8dBt05UV/FB+Z9abvpcK5hEI9g4cdzWWyZFzXxcAkQdDUQzk7Y7xaJsY8FVUT2iooFWVdtlSw/i/jCmGnNmrQ=="],
 
     "@phosphor-icons/react": ["@phosphor-icons/react@2.1.10", "", { "peerDependencies": { "react": ">= 16.8", "react-dom": ">= 16.8" } }, "sha512-vt8Tvq8GLjheAZZYa+YG/pW7HDbov8El/MANW8pOAz4eGxrwhnbfrQZq0Cp4q8zBEu8NIhHdnr+r8thnfRSNYA=="],
 
