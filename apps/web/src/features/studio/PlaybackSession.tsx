@@ -4,7 +4,8 @@ import type { OriginalRecord, SeparationRecord, WaveformRecord } from "../../sto
 import { getOriginal, subscribeLibrary } from "../../storage/repositories";
 import { useSeparation } from "../separation/useSeparation";
 import { useBeatGrid } from "./useBeatGrid";
-import { useDemoAudio } from "./useDemoAudio";
+import { useDemoAudio, DEMO_TRACK } from "./useDemoAudio";
+import { useMediaSession } from "./mediaSession";
 import { useImportedAudio, type ImportedPlayback } from "./useImportedAudio";
 import { usePracticePersistence } from "./usePracticePersistence";
 import { useSeparatedAudio } from "./useSeparatedAudio";
@@ -81,6 +82,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
 
   usePracticePersistence(original ?? undefined, playback.currentTimeUs, playback.playing, playback.ready, playback.seekTo);
   useWakeLock(playback.playing);
+  useMediaSession(playback, original?.title ?? DEMO_TRACK.title, original?.artist ?? DEMO_TRACK.artist, speed);
 
   useEffect(() => { if (routeSongId !== undefined) { setStudioOpened(true); useStudioStore.getState().openSong(routeSongId); } }, [routeSongId]);
   // Re-read on library changes, not only when the song id changes: recovering a
