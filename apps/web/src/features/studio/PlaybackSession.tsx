@@ -6,6 +6,7 @@ import { useSeparation } from "../separation/useSeparation";
 import { useBeatGrid } from "./useBeatGrid";
 import { useDemoAudio, DEMO_TRACK } from "./useDemoAudio";
 import { useMediaSession } from "./mediaSession";
+import { ShortcutsSheet } from "./components/ShortcutsSheet";
 import { useImportedAudio, type ImportedPlayback } from "./useImportedAudio";
 import { usePracticePersistence } from "./usePracticePersistence";
 import { useSeparatedAudio } from "./useSeparatedAudio";
@@ -68,6 +69,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   // not fetch it, so it waits until the Studio has been opened at least once.
   const [studioOpened, setStudioOpened] = useState(pathname.startsWith("/studio"));
   const [started, setStarted] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const lastRepetition = useRef(1);
 
   const waveform = useWaveform(original ?? undefined);
@@ -116,6 +118,9 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
       // shortcuts now reach every page, so taking it would break Import, the
       // tabs and every other control the moment they have focus.
       if (event.code === "Space" && target?.closest("button, a[href], [role='button'], summary")) return;
+      // Where the rest of this list is written down, since it is otherwise only
+      // visible at the bottom of the Practice panel.
+      if (event.key === "?") { event.preventDefault(); setShowShortcuts(true); }
       if (event.code === "Space" || event.key.toLowerCase() === "k") { event.preventDefault(); void playbackToggle(); }
       if (event.key.toLowerCase() === "j") playbackSeekBy(-10);
       if (event.key.toLowerCase() === "l") playbackSeekBy(10);
@@ -128,5 +133,5 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [original, playback.currentTimeUs, playbackSeekBy, playbackToggle, setLoopEnd, setLoopStart, toggleMetronome, toggleRecording]);
 
-  return <Context.Provider value={{ original, playback, waveform: waveform.waveform, waveformStatus: waveform.status, retryAnalysis: waveform.retry, beatGrid: beats.grid, setTempo: beats.setTempo, separation, started }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ original, playback, waveform: waveform.waveform, waveformStatus: waveform.status, retryAnalysis: waveform.retry, beatGrid: beats.grid, setTempo: beats.setTempo, separation, started }}>{children}{showShortcuts && <ShortcutsSheet onClose={() => setShowShortcuts(false)} />}</Context.Provider>;
 }

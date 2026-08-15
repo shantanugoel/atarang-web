@@ -247,6 +247,22 @@ test("saved separated songs enable independent stem controls",async({page,isMobi
   expect(errors).toEqual([]);
 });
 
+// The shortcuts are global, so the sheet describing them has to open away from
+// the Studio — and close the way a modal is expected to, which is Escape.
+test("the keymap opens with ? on any page and closes again",async({page})=>{
+  await page.goto("/library");
+  await page.keyboard.press("?");
+  const sheet=page.getByRole("dialog",{name:"Keyboard shortcuts"});
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText("Play or pause")).toBeVisible();
+  await expect(sheet.getByText("Record a take")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  // Typing a question mark into a field is a question mark, not a shortcut.
+  await page.getByLabel("Search library").fill("?");
+  await expect(sheet).toBeHidden();
+});
+
 test("the studio keeps the view you set when you leave and come back",async({page,isMobile})=>{
   await page.goto("/studio");
   const transport=page.getByRole("region",{name:"Waveform and transport"});

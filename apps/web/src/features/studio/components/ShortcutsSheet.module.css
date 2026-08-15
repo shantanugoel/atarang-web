@@ -1,0 +1,31 @@
+/* A native <dialog>: ::backdrop, Escape, the focus trap and aria-modal come
+   with the element, so the only thing left here is how it looks. */
+.sheet {
+  width: min(420px, 100%);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  background: var(--surface-1);
+  box-shadow: 0 24px 80px #000;
+}
+.sheet::backdrop { background: rgba(3, 4, 6, .78); backdrop-filter: blur(5px); }
+.sheet header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line-strong); }
+.sheet h2 { margin: 0; font: 22px var(--font-display); }
+.sheet header button { display: grid; place-items: center; width: 34px; height: 34px; color: var(--text-muted); }
+.sheet header svg { width: 18px; }
+.keys { display: grid; gap: 2px; margin: 0; padding: 10px 20px 16px; }
+.keys div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 7px 0; border-top: 1px solid var(--line); }
+.keys div:first-child { border-top: 0; }
+.keys dt { display: flex; gap: 4px; }
+.keys dd { margin: 0; color: var(--text-muted); text-align: right; }
+.keys kbd {
+  min-width: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-soft);
+  font: 11px var(--font-mono);
+  text-align: center;
+}
+.sheet footer { padding: 12px 20px; border-top: 1px solid var(--line-strong); color: var(--text-muted); font-size: 10px; line-height: 1.5; }

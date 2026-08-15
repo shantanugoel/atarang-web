@@ -64,6 +64,8 @@ export function PracticeInspector({ durationUs, currentTimeUs = 0, stemsAvailabl
       <div className={styles.row} title={stemsAvailable?undefined:STEM_ONLY_HINT}><label htmlFor="metronome">Metronome</label><button id="metronome" disabled={!stemsAvailable} className={styles.switch} role="switch" aria-checked={state.metronome} onClick={state.toggleMetronome}><span /></button></div>
       <div className={styles.row} title={stemsAvailable?undefined:STEM_ONLY_HINT}><label>Count-in</label><div className={styles.stepper}><button disabled={!stemsAvailable} onClick={()=>state.adjust("countIn",-1)} aria-label="Decrease count-in">−</button><output>{state.countIn}</output><button disabled={!stemsAvailable} onClick={()=>state.adjust("countIn",1)} aria-label="Increase count-in">+</button></div></div>
     </section>
-    <p className={styles.hint}><kbd>Space</kbd> Play · <kbd>I</kbd>/<kbd>O</kbd> Loop · <kbd>M</kbd> Click · drag the ruler above the waveform to loop a passage</p>
+    {/* The full keymap moved into the ? sheet, which is reachable from every
+        page rather than only from this panel. */}
+    <p className={styles.hint}><kbd>Space</kbd> Play · <kbd>?</kbd> All shortcuts · drag the ruler above the waveform to loop a passage</p>
   </aside>;
 }
