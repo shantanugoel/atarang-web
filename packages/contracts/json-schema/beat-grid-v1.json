@@ -1,5 +1,0 @@
-{
-  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://atarang.local/schemas/beat-grid-v1.json","title":"BeatGridV1","type":"object","additionalProperties":false,
-  "required":["schema","originalId","revision","algorithmVersion","bpm","reliability","reliable","userEdited","beats","updatedAt"],
-  "properties":{"schema":{"const":"atarang.beats/1"},"originalId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"algorithmVersion":{"enum":["atarang-spectral-flux/1","atarang-beat-dp/1"]},"bpm":{"type":"number","minimum":30,"maximum":300},"reliability":{"type":"number","minimum":0,"maximum":1},"reliable":{"type":"boolean"},"userEdited":{"type":"boolean"},"updatedAt":{"type":"string","format":"date-time"},"beats":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["timeUs","beatInBar","downbeat"],"properties":{"timeUs":{"type":"integer","minimum":0},"beatInBar":{"enum":[1,2,3,4]},"downbeat":{"type":"boolean"}}}}}
-}

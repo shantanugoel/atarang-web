@@ -41,6 +41,20 @@ class ObjectStore(Protocol):
     async def delete_source(self, upload_id: UUID) -> None: ...
 
 
+async def open_object_store(config: Settings) -> ObjectStore:
+    """The store this deployment is configured for, ready to be written to.
+
+    Every entry point wants the same two steps — pick the backend, and let S3
+    make its buckets before the first upload arrives — so they live together
+    rather than being repeated, and forgotten, per service.
+    """
+    if config.object_backend != "s3":
+        return FilesystemObjectStore(config.object_root)
+    store = S3ObjectStore(config)
+    await store.ensure_buckets()
+    return store
+
+
 class FilesystemObjectStore:
     def __init__(self, root: str):
         self.root = Path(root)

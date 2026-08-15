@@ -15,7 +15,7 @@
   }
   @immutable path_regexp immutable ^/(assets|runtime)/.+-[a-z0-9]+\.[a-z0-9]+$
   header @immutable Cache-Control "public, max-age=31536000, immutable"
-  @mutable path / /index.html /precache.json /manifest.webmanifest
+  @mutable path / /index.html /precache.json
   header @mutable Cache-Control "no-cache"
   handle /api/v1/metrics {
     respond 404

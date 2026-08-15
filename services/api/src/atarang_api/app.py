@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings, settings
-from .objects import FilesystemObjectStore, ObjectStore, S3ObjectStore
+from .objects import ObjectStore, open_object_store
 from .repository import PostgresRepository, token_hash, view
 from .schemas import (
     CapabilityView,
@@ -77,13 +77,7 @@ def create_app(
     async def lifespan(app: FastAPI):
         owned = repository is None
         app.state.repository = repository or PostgresRepository(config)
-        app.state.objects = object_store or (
-            S3ObjectStore(config)
-            if config.object_backend == "s3"
-            else FilesystemObjectStore(config.object_root)
-        )
-        if isinstance(app.state.objects, S3ObjectStore):
-            await app.state.objects.ensure_buckets()
+        app.state.objects = object_store or await open_object_store(config)
         yield
         if owned:
             await app.state.repository.close()

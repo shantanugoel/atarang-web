@@ -156,7 +156,6 @@ export async function removePerformance(id:string){
   await transaction.done;for(const path of orphanPaths)try{await removeOpfsPath(path)}catch{/* Unreferenced media is reclaimed by the integrity sweep. */}notify();return true;
 }
 
-export async function getSetting(id: string) { return (await database).get("settings", id); }
 export async function putSetting(id: string, value: unknown) {
   const db = await database; const existing = await db.get("settings", id); const now = new Date().toISOString();
   await db.put("settings", { id, value, schemaVersion: 1, createdAt: existing?.createdAt ?? now, updatedAt: now });
@@ -189,5 +188,4 @@ export async function putPerformance(record:PerformanceRecord){await(await datab
 export async function listModels(){return(await database).getAll("models")}
 export async function putModel(record:AtarangDatabase["models"]["value"]){await(await database).put("models",record);notify()}
 export async function listCapabilities(){return(await database).getAll("capabilities")}
-export async function getCapability(id:string){return(await database).get("capabilities",id)}
 export async function putCapability(record:AtarangDatabase["capabilities"]["value"]){await(await database).put("capabilities",record);notify()}

@@ -1,17 +1,6 @@
 export const STEM_KINDS = ["vocals", "drums", "bass", "other"] as const;
 export type StemKind = (typeof STEM_KINDS)[number];
 
-export interface OriginalV1 {
-  schema: "atarang.original/1";
-  originalId: string;
-  contentSha256: string;
-  sourceMediaType: string;
-  sampleRate: number;
-  channels: 1 | 2;
-  durationFrames: number;
-  createdAt: string;
-}
-
 /** A saved passage: a loop the player named so they can come back to it. */
 export interface PracticeSectionV1 { id: string; name: string; startTimeUs: number; endTimeUs: number }
 
@@ -71,7 +60,6 @@ export const CHORD_ALGORITHMS:readonly ChordAlgorithmV1[]=["atarang-chroma/2","a
 /** The learned front end reads the mixture well enough to stand on its own; run over the stems it is better still, and that is the best answer available. */
 export const CURRENT_CHORD_ALGORITHMS:readonly ChordAlgorithmV1[]=["atarang-chroma/3","atarang-chroma/3-stems","atarang-crema/1","atarang-crema/1-stems","atarang-crema/2","atarang-crema/2-stems"];
 export interface ChordAnalysisV1{schema:"atarang.chords/1";originalId:string;revision:number;algorithmVersion:ChordAlgorithmV1;key:string|null;confidence:number;segments:ChordSegmentV1[];updatedAt:string}
-export interface CorrectionLayerV1{schema:"atarang.corrections/1";originalId:string;analysisKind:"beats"|"chords"|"lyrics";generatedRevision:number;revision:number;operations:Record<string,unknown>[];updatedAt:string}
 export interface PerformanceAssetV1 {blobId:string;sha256:string;byteLength:number;mediaType:"audio/wav"}
 export interface PerformanceManifestV1 {schema:"atarang.performance/1";performanceId:string;originalId:string;revision:number;startedAt:string;endedAt:string;sampleRate:number;channels:2;durationFrames:number;mic:PerformanceAssetV1;backing:PerformanceAssetV1;inputOffsetUs:number;deviceSettings:{sampleRate?:number;channelCount?:number;echoCancellation?:boolean;noiseSuppression?:boolean;autoGainControl?:boolean};edit:{trimStartUs:number;trimEndUs:number;fadeInUs:number;fadeOutUs:number;micGain?:number;backingGain?:number};updatedAt:string}
 export interface ModelPieceV1{name:string;url:string;order:number;byteLength:number;sha256:string;inputs:string[];outputs:string[]}

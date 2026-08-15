@@ -1,10 +1,24 @@
-export async function fileForOpfsPath(path: string) {
+// Every operation here does the same walk: split the path, descend to the
+// containing directory, act on the last segment.
+async function walk(path: string) {
   const parts = path.split("/").filter(Boolean);
-  const fileName = parts.pop();
-  if (!fileName) throw new Error("Invalid OPFS file path");
+  const name = parts.pop();
   let directory = await navigator.storage.getDirectory();
   for (const part of parts) directory = await directory.getDirectoryHandle(part);
-  return (await directory.getFileHandle(fileName)).getFile();
+  return [directory, name] as const;
+}
+
+// A removal that finds nothing has already succeeded.
+async function remove(path: string, recursive: boolean) {
+  const [directory, name] = await walk(path);
+  if (!name) return;
+  try { await directory.removeEntry(name, { recursive }); } catch (error) { if (!(error instanceof DOMException && error.name === "NotFoundError")) throw error; }
+}
+
+export async function fileForOpfsPath(path: string) {
+  const [directory, name] = await walk(path);
+  if (!name) throw new Error("Invalid OPFS file path");
+  return (await directory.getFileHandle(name)).getFile();
 }
 
 // OPFS is evictable when storage is not persistent, while the IndexedDB record
@@ -17,13 +31,5 @@ export async function opfsPathsExist(paths: string[]) {
   } catch { return false; }
 }
 
-export async function removeOpfsPath(path: string) {
-  const parts = path.split("/").filter(Boolean);
-  const fileName = parts.pop();
-  if (!fileName) return;
-  let directory = await navigator.storage.getDirectory();
-  for (const part of parts) directory = await directory.getDirectoryHandle(part);
-  try { await directory.removeEntry(fileName); } catch (error) { if (!(error instanceof DOMException && error.name === "NotFoundError")) throw error; }
-}
-
-export async function removeOpfsDirectory(path:string){const parts=path.split("/").filter(Boolean),name=parts.pop();if(!name)return;let directory=await navigator.storage.getDirectory();for(const part of parts)directory=await directory.getDirectoryHandle(part);try{await directory.removeEntry(name,{recursive:true})}catch(error){if(!(error instanceof DOMException&&error.name==="NotFoundError"))throw error}}
+export const removeOpfsPath = (path: string) => remove(path, false);
+export const removeOpfsDirectory = (path: string) => remove(path, true);

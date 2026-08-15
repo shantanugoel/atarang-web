@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from atarang_api.config import settings
-from atarang_api.objects import FilesystemObjectStore, S3ObjectStore
+from atarang_api.objects import open_object_store
 from atarang_api.repository import PostgresRepository
 from atarang_api.schemas import JobState
 
@@ -124,9 +124,7 @@ async def acquire(row, repository: PostgresRepository, objects) -> None:
 
 async def serve() -> None:
     repository = PostgresRepository(settings)
-    objects = S3ObjectStore(settings) if settings.object_backend == "s3" else FilesystemObjectStore(settings.object_root)
-    if isinstance(objects, S3ObjectStore):
-        await objects.ensure_buckets()
+    objects = await open_object_store(settings)
     try:
         while True:
             row = await repository.claim_youtube(settings.youtube_acquisition_worker_id, lease_seconds=900)

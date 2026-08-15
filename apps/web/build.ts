@@ -118,7 +118,6 @@ const builtHtml = appBuild.outputs.find((output) => output.path.endsWith(".html"
 if (!builtHtml) throw new Error("Application build did not emit HTML");
 const html = (await Bun.file(builtHtml.path).text()).replaceAll('href="./', 'href="/assets/').replaceAll('src="./', 'src="/assets/');
 await Bun.write(`${outdir}/index.html`, html);
-await Bun.write(`${outdir}/manifest.webmanifest`, Bun.file("public/manifest.webmanifest"));
 
 // The headers a static host must send, in the format Cloudflare Workers, Pages
 // and Netlify all read. Without cross-origin isolation `crossOriginIsolated` is
@@ -180,7 +179,7 @@ const publicArtifacts = [...runtimeBuild.outputs, ...appBuild.outputs]
   .filter((output) => !output.path.endsWith(".map") && !output.path.endsWith(".html"))
   .map((output) => publicPath(output.path));
 publicArtifacts.push(ortWasmUrl, ortMjsUrl);
-await Bun.write(`${outdir}/precache.json`, JSON.stringify(["/index.html", "/manifest.webmanifest", ...publicArtifacts]));
+await Bun.write(`${outdir}/precache.json`, JSON.stringify(["/index.html", ...publicArtifacts]));
 for (const [name, url] of Object.entries(JSON.parse(generated.slice(generated.indexOf("{") , generated.lastIndexOf("}") + 1)) as Record<string,string>)) {
   if (!/^\/runtime\/.+-[a-z0-9]+\.js$/.test(url)) throw new Error(`${name} is not content hashed: ${url}`);
 }

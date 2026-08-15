@@ -2,14 +2,14 @@ import asyncio
 from datetime import UTC, datetime
 
 from .config import settings
-from .objects import FilesystemObjectStore, S3ObjectStore
+from .objects import open_object_store
 from .repository import PostgresRepository
 from .schemas import JobState
 
 
 async def cleanup_once() -> int:
     repository = PostgresRepository(settings)
-    objects = S3ObjectStore(settings) if settings.object_backend == "s3" else FilesystemObjectStore(settings.object_root)
+    objects = await open_object_store(settings)
     removed = 0
     try:
         await repository.purge_old_events(datetime.now(UTC))
