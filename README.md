@@ -187,10 +187,33 @@ BSD-2-Clause with its notice in `models/chords/`; the separation weights are
 checked in under `model-files/`. Mediabunny is MPL-2.0 and, on the server
 side, MinIO is AGPL-3.0 — review both before redistributing an image.
 
+## How the pieces fit
+
+- `apps/web` — the whole client. `build.ts` is the build: it stages the ONNX
+  runtime and the chord model content-addressed, bundles the app and each worker
+  entry separately, and writes `_headers` and `precache.json`. There is no
+  framework CLI in the loop.
+- `apps/web/src/features/*` — one directory per surface (studio, library,
+  separation, chords, lyrics, recording, settings, analysis). `PlaybackSession`
+  sits above the router outlet and owns the song, the audio and the shortcuts, so
+  playback survives navigating away from the Studio.
+- `apps/web/src/audio` — the four-stem engine and its AudioWorklet processor:
+  mixing, looping, speed and pitch, metronome and repetition counting all happen
+  on the audio thread, which is why `SharedArrayBuffer` and cross-origin
+  isolation are hard requirements.
+- `apps/web/src/storage` — IndexedDB for records, OPFS for bytes, plus backup,
+  restore, integrity sweeps and the zip writer.
+- `apps/web/src/workers` — analysis, inference, I/O and recording, off the UI
+  thread.
+- `packages/contracts` — the schemas both sides validate against, with the
+  assertion helpers used at every trust boundary.
+- `services/{api,worker,acquisition}` and `infra/` — the optional backend for
+  cloud separation and YouTube fetching, and how it is deployed.
+
 ## Contributing
 
-Architecture and phased gates: `IMPLEMENTATION_PLAN.md`. Outstanding work and
-measured limits: `AUDIT.md`. After API contract changes, regenerate the committed
-OpenAPI snapshot with
-`uv run --package atarang-api python services/api/scripts/export_openapi.py`; CI
-fails if regeneration produces a diff.
+What is worth building next, what is not, and why: `next_steps.md`. After API
+contract changes, regenerate the committed OpenAPI snapshot with
+`uv run --package atarang-api python services/api/scripts/export_openapi.py`.
+There is no CI yet, so the gates above are honour-system: run them before you
+push, and a workflow should fail on a regeneration diff once one exists.
