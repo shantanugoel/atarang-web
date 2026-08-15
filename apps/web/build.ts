@@ -68,7 +68,14 @@ if (configuredBackend) {
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`ATARANG_BACKEND_URL must be http(s): ${configuredBackend}`);
   backendOrigin = url.origin;
 }
-const define = { __ATARANG_BACKEND_ORIGIN__: JSON.stringify(backendOrigin) };
+// Without this React resolves its development entry: the DevTools banner, the
+// dev-only warning machinery, and StrictMode's double-invoked effects all ship
+// to production — the last of which had the tuner opening two microphone
+// streams and stopping one of them.
+const define = {
+  __ATARANG_BACKEND_ORIGIN__: JSON.stringify(backendOrigin),
+  "process.env.NODE_ENV": JSON.stringify("production"),
+};
 
 const runtimeEntries = {
   audioWorklet: "src/audio/atarang-processor.ts",
