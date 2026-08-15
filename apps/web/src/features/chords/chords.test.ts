@@ -50,6 +50,23 @@ describe("detected chords over a lyric line",()=>{
     expect(alignChords(line("Walk the [Bm]boulevard",13_480_000,17_430_000),detected)).toEqual([{text:"Walk the "},{text:"boulevard",chord:"Bm"}]));
   test("uses enhanced word timings when the line carries them",()=>
     expect(alignChords({...line("Someone told me long ago",13_480_000,17_430_000),words:[{text:"Someone ",startTimeUs:13_480_000,endTimeUs:16_100_000},{text:"told ",startTimeUs:16_100_000,endTimeUs:16_400_000},{text:"me ",startTimeUs:16_400_000,endTimeUs:16_700_000},{text:"long ",startTimeUs:16_700_000,endTimeUs:17_000_000},{text:"ago",startTimeUs:17_000_000,endTimeUs:17_430_000}]},detected).map(part=>part.chord??"")).toEqual(["C","Am","","",""]));
+  // Enhanced LRC tags syllables as often as words, so the tag count and the word
+  // count differ on any line with a hyphen or a held vowel. Matching by count
+  // threw the real timings away there and went back to guessing from characters;
+  // matching by position keeps them. Am belongs over "long", which these tags put
+  // at 16.7s — the character guess puts the same change on "me".
+  test("uses word timings even where the tags are per syllable",()=>{
+    const words=[
+      {text:"Some",startTimeUs:13_480_000,endTimeUs:13_900_000},
+      {text:"one ",startTimeUs:13_900_000,endTimeUs:16_100_000},
+      {text:"told ",startTimeUs:16_100_000,endTimeUs:16_400_000},
+      {text:"me ",startTimeUs:16_400_000,endTimeUs:16_700_000},
+      {text:"long ",startTimeUs:16_700_000,endTimeUs:17_000_000},
+      {text:"a",startTimeUs:17_000_000,endTimeUs:17_200_000},
+      {text:"go",startTimeUs:17_200_000,endTimeUs:17_430_000},
+    ];
+    expect(alignChords({...line("Someone told me long ago",13_480_000,17_430_000),words},detected).map(part=>part.chord??"")).toEqual(["C","Am","","",""]);
+  });
   // A shifted document has to land on the same words as the unshifted one.
   test("reads the lyrics offset before matching against the audio",()=>
     expect(alignChords(line("Someone told me long ago",11_480_000,15_430_000),detected,2_000_000).map(part=>part.chord??"")).toEqual(alignChords(line("Someone told me long ago",13_480_000,17_430_000),detected).map(part=>part.chord??"")));

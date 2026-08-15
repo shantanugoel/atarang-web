@@ -29,12 +29,13 @@ export function parseChordLine(line:string):ChartSegmentV1[]{const segments:Char
  *
  * Placement is proportional: a word's onset is estimated from how far into the
  * line's characters it starts, since a plain LRC times lines and not words.
- * Enhanced LRC word timings replace that guess whenever the line carries them.
+ * Enhanced LRC word timings replace that guess whenever the line carries them,
+ * matched by position so syllable tags count too.
  *
- * ponytail: characters are a stand-in for syllables, and a line's span runs to
- * the next line rather than to its last sung word, so a chord can land a word
- * early where an instrumental gap follows. Word timings are the honest fix and
- * already win when present.
+ * ponytail: characters remain a stand-in for syllables on a line with no tags,
+ * and a line's span runs to the next line rather than to its last sung word, so
+ * a chord can land a word early where an instrumental gap follows. Word timings
+ * are the honest fix and win wherever the source has them.
  */
 export function alignChords(line:LyricLineV1,segments:readonly ChordSegmentV1[],offsetUs=0):ChartSegmentV1[]{
   const inline=parseChordLine(line.text);
@@ -54,9 +55,18 @@ export function alignChords(line:LyricLineV1,segments:readonly ChordSegmentV1[],
   // Nothing to hang a symbol on, so only a chord that actually starts in the
   // gap earns a line — a held one is already printed above the words before it.
   if(!words.length)return changes.filter(item=>item.startTimeUs>=start).map(item=>({text:"",chord:item.chord}));
-  const timed=line.words.length===words.length?line.words:undefined,total=line.text.length||1;
-  let consumed=0;
-  const onsets=words.map((word,index)=>{const at=timed?timed[index]!.startTimeUs+offsetUs:start+(end-start)*(consumed/total);consumed+=word.length;return at}),
+  // Enhanced LRC tags syllables as often as words — <00:12.10>Hel<00:12.40>lo —
+  // so timings are matched by where they fall in the line rather than by
+  // counting them: the tag covering a word's first character is the tag that
+  // starts that word. Counting them meant one hyphenated word threw the whole
+  // line's real timings away and went back to guessing.
+  const total=line.text.length||1;
+  const taggedOnset=(offset:number)=>{let cursor=0;for(const word of line.words){cursor+=word.text.length;if(offset<cursor)return word.startTimeUs+offsetUs}return undefined};
+  // Never earlier than the word before it: a hand-edited line can carry tags for
+  // part of itself, and mixing a real onset with a guessed one is the only way
+  // these come out of order — which would hang a change on the wrong word.
+  let consumed=0,previous=start;
+  const onsets=words.map((word)=>{const at=Math.max(previous,taggedOnset(consumed)??start+(end-start)*(consumed/total));previous=at;consumed+=word.length;return at}),
     placed=new Map<number,string[]>();
   for(const change of changes){
     let index=0;
