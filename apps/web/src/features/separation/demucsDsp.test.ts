@@ -7,6 +7,7 @@ import {
   DEMUCS_STRIDE_FRAMES,
   RollingStemOverlapAdd,
   classifyDemucsQualification,
+  combineDemucsBranches,
   prepareDemucsInput,
 } from "./demucsDsp";
 
@@ -20,6 +21,53 @@ describe("bounded browser Demucs DSP", () => {
     expect(prepared.mix.length).toBe(2 * DEMUCS_SEGMENT_FRAMES);
     expect(prepared.mag.length).toBe(4 * DEMUCS_SPEC_BINS * DEMUCS_SPEC_FRAMES);
     expect(prepared.mag.every(Number.isFinite)).toBe(true);
+  });
+
+  // The DSP buffers are reused across segments so a song does not allocate its
+  // way past the iOS process limit. Reuse is only safe while a segment cannot
+  // read anything the previous one left behind, which is what these two check:
+  // the same input has to give the same answer with another segment in between.
+  test("a repeated segment prepares identically after another one ran", () => {
+    const segment = (seed: number) => {
+      const left = new Float32Array(DEMUCS_SEGMENT_FRAMES);
+      const right = new Float32Array(DEMUCS_SEGMENT_FRAMES);
+      for (let frame = 0; frame < DEMUCS_SEGMENT_FRAMES; frame += 97) {
+        left[frame] = Math.sin(frame * seed);
+        right[frame] = Math.cos(frame * seed);
+      }
+      return { left, right };
+    };
+    const first = segment(0.001);
+    const second = segment(0.031);
+    const baseline = prepareDemucsInput(first.left, first.right);
+    const mag = baseline.mag.slice();
+    const mix = baseline.mix.slice();
+    prepareDemucsInput(second.left, second.right);
+    const repeat = prepareDemucsInput(first.left, first.right);
+    expect(repeat.mag).toEqual(mag);
+    expect(repeat.mix).toEqual(mix);
+  });
+
+  test("a repeated segment combines identically after another one ran", () => {
+    const freqLength = 4 * 4 * DEMUCS_SPEC_BINS * DEMUCS_SPEC_FRAMES;
+    const timeLength = 4 * 2 * DEMUCS_SEGMENT_FRAMES;
+    const branches = (seed: number) => {
+      const freq = new Float32Array(freqLength);
+      const time = new Float32Array(timeLength);
+      for (let index = 0; index < freqLength; index += 101) freq[index] = Math.sin(index * seed);
+      for (let index = 0; index < timeLength; index += 89) time[index] = Math.cos(index * seed);
+      return { freq, time };
+    };
+    const first = branches(0.002);
+    const second = branches(0.017);
+    const baseline = combineDemucsBranches(first.freq, first.time).map((stem) => ({ left: stem.left.slice(), right: stem.right.slice() }));
+    combineDemucsBranches(second.freq, second.time);
+    const repeat = combineDemucsBranches(first.freq, first.time);
+    for (let stem = 0; stem < 4; stem++) {
+      expect(repeat[stem]!.left).toEqual(baseline[stem]!.left);
+      expect(repeat[stem]!.right).toEqual(baseline[stem]!.right);
+      expect(baseline[stem]!.left.some((value) => value !== 0)).toBe(true);
+    }
   });
 
   test("overlap-add is exact and memory stays independent of song length", () => {
