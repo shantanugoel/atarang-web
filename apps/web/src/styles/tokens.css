@@ -1,3 +1,16 @@
+/* Dark is the default because a studio is dark. Light is not a theme switcher —
+   there is no toggle and no stored preference — it is the OS preference being
+   respected, which is what a sunlit rehearsal room and the sing-along view read
+   from across a room actually need.
+ *
+ * Two rules for anything added here:
+ *   1. No literal colour in a module CSS file. A literal is a colour that works
+ *      on exactly one ground, and it is invisible on the other one.
+ *   2. Tokens name a role, not a shade. `--text-strong` is "the brightest
+ *      foreground", which is white on dark and near-black on light; `--on-accent`
+ *      is "text on the accent fill", which is white in both because the accent
+ *      stays purple.
+ */
 :root {
   --bg: #0b0d10;
   --surface-1: #101318;
@@ -17,7 +30,33 @@
   --bass: #29c4d1;
   --other: #816bf2;
   --danger: #ff545f;
+  --danger-wash: rgba(255, 84, 95, .12);
   --success: #42cb85;
+  /* The brightest foreground, and text sitting on an accent fill. */
+  --text-strong: #ffffff;
+  --on-accent: #ffffff;
+  /* The transport is a shade darker than the panels above it, and its chips a
+     shade darker again. */
+  --surface-transport: #0e1115;
+  --surface-chip: #15191f;
+  /* Bordered controls — steppers, tap tempo — carry a bluer line than panels. */
+  --line-control: #4a5483;
+  --hover-wash: rgba(255, 255, 255, .05);
+  /* The waveform, its beat marks, and the playhead over both. */
+  --wave-fill: #767d89;
+  --wave-grid: rgba(195, 199, 206, .16);
+  --beat-mark: rgba(155, 148, 255, .2);
+  --beat-downbeat: rgba(155, 148, 255, .42);
+  --playhead: #ffffff;
+  --loop-fill: rgba(115, 103, 243, .24);
+  /* Master is a channel with no stem colour of its own. */
+  --master-stem: #d7dbe3;
+  --meter-warn: #ffd166;
+  --meter-peak: #ff5964;
+  /* Dialogs dim the page behind them in both themes — a light scrim over light
+     content stops reading as "behind a dialog" at all. */
+  --scrim: rgba(3, 4, 6, .78);
+  --shadow-strong: #000000;
   --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-display: "Arial Narrow", "Roboto Condensed", Impact, ui-sans-serif, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -31,6 +70,52 @@
      quietly renders below the bottom of the screen. The e2e touch-target test
      measures those rows against the viewport for exactly that reason. */
   --transport-h: 200px;
+}
+/* Light ground. Only colour roles are redefined; every size above is shared.
+ *
+ * The four stem hues need their own values rather than a filter: amber on white
+ * is unreadable and cyan nearly so, and they have to stay distinguishable from
+ * each other after being darkened. --accent-soft is a *foreground* here, so it
+ * goes darker than --accent rather than lighter. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f6f9;
+    --surface-1: #ffffff;
+    --surface-2: #f1f3f7;
+    --surface-3: #e7eaf0;
+    --surface-hover: #e1e5ee;
+    --line: #dde1e9;
+    --line-strong: #bfc6d2;
+    --text: #14171c;
+    --text-soft: #3c424e;
+    --text-muted: #666d7a;
+    --accent: #5a4ee0;
+    --accent-soft: #4032b8;
+    --accent-wash: rgba(90, 78, 224, .10);
+    --vocals: #c4106f;
+    --drums: #8d5a00;
+    --bass: #0b6f78;
+    --other: #5240c9;
+    --danger: #cf2331;
+    --danger-wash: rgba(207, 35, 49, .10);
+    --success: #197a48;
+    --text-strong: #0b0d10;
+    --surface-transport: #eceff4;
+    --surface-chip: #ffffff;
+    --line-control: #a7afc6;
+    --hover-wash: rgba(11, 13, 16, .06);
+    --wave-fill: #98a0ac;
+    --wave-grid: rgba(20, 23, 28, .18);
+    --beat-mark: rgba(64, 50, 184, .22);
+    --beat-downbeat: rgba(64, 50, 184, .45);
+    --playhead: #0b0d10;
+    --loop-fill: rgba(90, 78, 224, .18);
+    --master-stem: #4a5260;
+    --meter-warn: #b57400;
+    --meter-peak: #cf2331;
+    --scrim: rgba(3, 4, 6, .55);
+    --shadow-strong: rgba(11, 13, 16, .32);
+  }
 }
 @media (max-width: 760px) { :root { --transport-h: 169px; } }
 /* Touch adds height to the loop lane above the waveform — except on a phone,

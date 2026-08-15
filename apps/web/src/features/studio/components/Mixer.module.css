@@ -2,7 +2,7 @@
 /* Spans every channel: a preset is a statement about the whole mix. */
 .presets { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 8px; border-bottom: 1px solid var(--line-strong); }
 .presets button { min-height: 26px; padding: 0 4px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--text-soft); font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.presets button:hover:not(:disabled) { border-color: var(--accent); color: white; }
+.presets button:hover:not(:disabled) { border-color: var(--accent); color: var(--text-strong); }
 .presets button:disabled { opacity: .45; cursor: not-allowed; }
 .unavailable .channel{opacity:.42}.unavailable button,.unavailable input{cursor:not-allowed}
 .channel { --stem: var(--text); min-width: 0; display: grid; grid-template-rows: 38px 56px minmax(120px, 1fr) 26px 30px 3px 40px; align-items: center; justify-items: center; padding: 8px 5px 0; border-right: 1px solid var(--line-strong); }
@@ -21,7 +21,7 @@
    scrollable pane is a pan until the element claims it, and the pane the mixer
    lives in on a tablet scrolls. */
 .faderWrap input { position: absolute; inset-block: 4px; width: 28px; height: calc(100% - 8px); writing-mode: vertical-lr; direction: rtl; accent-color: var(--stem); cursor: ns-resize; touch-action: none; }
-.meter{position:absolute;right:-2px;inset-block:4px;width:5px;overflow:hidden;background:var(--surface-3);border-radius:3px}.meter i{position:absolute;inset-inline:0;bottom:0;background:linear-gradient(to top,var(--stem) 70%,#ffd166 90%,#ff5964)}
+.meter{position:absolute;right:-2px;inset-block:4px;width:5px;overflow:hidden;background:var(--surface-3);border-radius:3px}.meter i{position:absolute;inset-inline:0;bottom:0;background:linear-gradient(to top,var(--stem) 70%,var(--meter-warn) 90%,var(--meter-peak))}
 .channel output { font: 11px var(--font-mono); color: var(--text-soft); }
 .pan{width:100%;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:2px;color:var(--text-muted);font:8px var(--font-mono)}.pan input{min-width:0;width:100%;height:18px;accent-color:var(--stem);touch-action:none}.panSpacer{color:var(--text-muted);font:8px var(--font-mono);letter-spacing:.12em}
 .colorRule { width: 100%; height: 3px; background: var(--stem); }
@@ -38,4 +38,4 @@
   .pan input { height: 28px; }
 }
 
-.master{--stem:#d7dbe3;background:color-mix(in srgb,var(--surface-2) 55%,var(--surface-1))}.masterIcon{width:100%;height:100%;display:grid;place-items:center;color:var(--text-soft)}.masterIcon svg{width:20px}.masterLabel{display:grid;place-items:center;height:100%;font:9px var(--font-mono);letter-spacing:.12em;color:var(--text-muted)}
+.master{--stem:var(--master-stem);background:color-mix(in srgb,var(--surface-2) 55%,var(--surface-1))}.masterIcon{width:100%;height:100%;display:grid;place-items:center;color:var(--text-soft)}.masterIcon svg{width:20px}.masterLabel{display:grid;place-items:center;height:100%;font:9px var(--font-mono);letter-spacing:.12em;color:var(--text-muted)}

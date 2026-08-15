@@ -6,9 +6,9 @@
   border: 1px solid var(--line-strong);
   color: var(--text);
   background: var(--surface-1);
-  box-shadow: 0 24px 80px #000;
+  box-shadow: 0 24px 80px var(--shadow-strong);
 }
-.sheet::backdrop { background: rgba(3, 4, 6, .78); backdrop-filter: blur(5px); }
+.sheet::backdrop { background: var(--scrim); backdrop-filter: blur(5px); }
 .sheet header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line-strong); }
 .sheet h2 { margin: 0; font: 22px var(--font-display); }
 .sheet header button { display: grid; place-items: center; width: 34px; height: 34px; color: var(--text-muted); }

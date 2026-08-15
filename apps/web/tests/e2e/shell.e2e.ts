@@ -260,6 +260,33 @@ test("saved separated songs enable independent stem controls",async({page,hasTou
   expect(errors).toEqual([]);
 });
 
+// Dark is right for a studio and wrong for a sunlit rehearsal room, and the OS
+// already knows which one someone is in. Nothing here is a theme switcher: this
+// is the stated preference being answered.
+test.describe("a light room",()=>{
+  test.use({colorScheme:"light"});
+  test("the palette follows the OS preference and stays readable",async({page})=>{
+    await page.goto("/studio");
+    const contrast=await page.evaluate(()=>{
+      const probe=document.createElement("span");document.body.append(probe);
+      const rgb=(value:string)=>{probe.style.color=value;return getComputedStyle(probe).color.match(/[\d.]+/g)!.slice(0,3).map(Number).map(channel=>channel/255)};
+      const luminance=(value:string)=>{const [r,g,b]=rgb(value).map(channel=>channel<=.03928?channel/12.92:((channel+.055)/1.055)**2.4) as [number,number,number];return .2126*r+.7152*g+.0722*b};
+      const ratio=(a:string,b:string)=>{const [high,low]=[luminance(a),luminance(b)].sort((x,y)=>y-x) as [number,number];return (high+.05)/(low+.05)};
+      const result={ground:luminance("var(--bg)"),text:ratio("var(--text)","var(--bg)"),muted:ratio("var(--text-muted)","var(--surface-1)"),
+        stems:["--vocals","--drums","--bass","--other"].map(stem=>ratio(`var(${stem})`,"var(--surface-1)"))};
+      probe.remove();return result;
+    });
+    // A light ground, and every foreground still clearing AA on it — the stem
+    // hues included, which is the half of this that is easy to get wrong.
+    expect(contrast.ground).toBeGreaterThan(.7);
+    expect(contrast.text).toBeGreaterThan(7);
+    expect(contrast.muted).toBeGreaterThan(4.5);
+    for(const stem of contrast.stems) expect(stem).toBeGreaterThan(4.5);
+    // And the waveform is drawn, not left as a dark-on-dark shape nobody can see.
+    expect(await page.locator("svg path").first().evaluate(element=>getComputedStyle(element).fill)).not.toBe("rgb(0, 0, 0)");
+  });
+});
+
 // A tablet on a music stand is the archetypal device for this app, and the gap
 // was never layout — the panes already collapse — but the size of what a finger
 // has to hit. 40px is the floor. The loop lane is the exception: it is a drag

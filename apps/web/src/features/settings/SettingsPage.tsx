@@ -77,7 +77,7 @@ const settingSection=()=>SETTING_SECTIONS.find(section=>location.hash===`#${sect
 const AtarangMark=()=>(
   <svg className={styles.mark} viewBox="0 0 32 32" aria-hidden>
     <rect width="32" height="32" rx="7" fill="var(--accent)"/>
-    <path d="M13 8.5 22 6.6v11.6a3.1 3.1 0 1 1-2-2.9V11l-5 1.1v8.6a3.1 3.1 0 1 1-2-2.9z" fill="#fff"/>
+    <path d="M13 8.5 22 6.6v11.6a3.1 3.1 0 1 1-2-2.9V11l-5 1.1v8.6a3.1 3.1 0 1 1-2-2.9z" fill="var(--on-accent)"/>
   </svg>
 );
 

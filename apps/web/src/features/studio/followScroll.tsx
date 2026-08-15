@@ -16,7 +16,10 @@ export function useFollowScroll<T extends HTMLElement>(active: number, enabled =
     autoScrollUntil = useRef(0);
   const scrollToActive = () => {
     autoScrollUntil.current = performance.now() + 600;
-    line.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    // A view that scrolls itself every few seconds is the one piece of motion
+    // here nobody can opt out of in CSS: the behaviour is an argument.
+    const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    line.current?.scrollIntoView({ block: "center", behavior: reduced ? "instant" : "smooth" });
   };
   useEffect(() => {
     if (enabled && following && active >= 0) scrollToActive();

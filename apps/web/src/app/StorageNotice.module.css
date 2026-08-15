@@ -6,11 +6,11 @@
 .notice b { color: var(--text); font-weight: 650; }
 .actions { flex: none; margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .actions button { flex: none; height: 28px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--text-soft); font-size: 12px; }
-.actions button:hover:not(:disabled) { border-color: var(--accent); color: white; }
+.actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--text-strong); }
 .actions button:disabled { opacity: .6; cursor: progress; }
 .actions button:active:not(:disabled) { transform: translateY(1px); }
 .notice > svg.granted { color: var(--success); }
-.primary { display: flex; align-items: center; gap: 6px; border-color: var(--accent); color: white; background: var(--surface-2); }
+.primary { display: flex; align-items: center; gap: 6px; border-color: var(--accent); color: var(--text-strong); background: var(--surface-2); }
 .primary svg { width: 14px; height: 14px; }
 .dismiss { width: 28px; padding: 0; display: grid; place-items: center; }
 .dismiss svg { width: 13px; height: 13px; }

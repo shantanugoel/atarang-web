@@ -24,21 +24,21 @@
 .sections li > button:first-child:hover { border-color: var(--accent); }
 .removeSection { display: grid; place-items: center; color: var(--text-muted); border-radius: var(--radius-sm); }
 .removeSection:hover { color: var(--danger); background: var(--surface-hover); }
-.tap { height: 38px; border: 1px solid #4a5483; border-radius: var(--radius-sm); font-size: 12px; font-weight: 700; }
+.tap { height: 38px; border: 1px solid var(--line-control); border-radius: var(--radius-sm); font-size: 12px; font-weight: 700; }
 .tap:hover:not(:disabled) { background: var(--accent-wash); }
-.tap:active:not(:disabled) { background: var(--accent); color: white; }
+.tap:active:not(:disabled) { background: var(--accent); color: var(--text-strong); }
 .tap:disabled { opacity: .4; }
 .controls { padding-top: 12px; }
 .row { min-height: 57px; display: grid; grid-template-columns: 88px 1fr; gap: 10px; align-items: center; border-bottom: 1px solid var(--line); }
 .row > label { color: var(--text-soft); font-size: 12px; font-weight: 700; }
-.stepper { height: 38px; display: grid; grid-template-columns: 38px 1fr 38px; border: 1px solid #4a5483; border-radius: var(--radius-sm); overflow: hidden; }
-.stepper button { color: var(--text); font-size: 18px; border-right: 1px solid #4a5483; }
-.stepper button:last-child { border: 0; border-left: 1px solid #4a5483; }
+.stepper { height: 38px; display: grid; grid-template-columns: 38px 1fr 38px; border: 1px solid var(--line-control); border-radius: var(--radius-sm); overflow: hidden; }
+.stepper button { color: var(--text); font-size: 18px; border-right: 1px solid var(--line-control); }
+.stepper button:last-child { border: 0; border-left: 1px solid var(--line-control); }
 .stepper button:hover { background: var(--accent-wash); }
 .stepper output { display: grid; place-items: center; font: 12px var(--font-mono); }
 .switch { justify-self: end; position: relative; width: 48px; height: 26px; padding: 3px; border-radius: 20px; background: var(--line-strong); }
 .switch[aria-checked="true"] { background: var(--accent); }
-.switch span { display: block; width: 20px; height: 20px; border-radius: 50%; background: white; transform: translateX(0); }
+.switch span { display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--text-strong); transform: translateX(0); }
 .switch[aria-checked="true"] span { transform: translateX(22px); }
 /* Steppers are the control this panel is mostly made of, and 38px of it is a
    miss on a music stand. The rows grow with them rather than clipping. */

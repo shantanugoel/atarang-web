@@ -1,6 +1,6 @@
 /* Sticky rather than fixed: the offsets that would keep a fixed button clear of
    the transport belong to a layout this component knows nothing about, and the
    scroller it is a child of already has them. */
-.resume { position: sticky; bottom: 18px; z-index: 6; display: flex; align-items: center; gap: 7px; width: fit-content; margin: 14px 10px 0 auto; padding: 10px 16px; border: 1px solid var(--accent); border-radius: 999px; background: var(--surface-1); color: var(--accent-soft); font-size: 12px; font-weight: 700; box-shadow: 0 10px 28px rgba(0, 0, 0, .5); }
+.resume { position: sticky; bottom: 18px; z-index: 6; display: flex; align-items: center; gap: 7px; width: fit-content; margin: 14px 10px 0 auto; padding: 10px 16px; border: 1px solid var(--accent); border-radius: 999px; background: var(--surface-1); color: var(--accent-soft); font-size: 12px; font-weight: 700; box-shadow: 0 10px 28px var(--shadow-strong); }
 .resume:hover { background: var(--accent-wash); }
 .resume svg { width: 15px; height: 15px; }
