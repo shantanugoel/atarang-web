@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
+import { CrosshairSimple } from "@phosphor-icons/react";
 import { useStudioStore } from "./studioStore";
+import styles from "./followScroll.module.css";
 
 // Keeps the active lyric line centred while playback moves, and stops as soon
 // as the reader scrolls away themselves. The two are told apart by a deadline
@@ -32,4 +34,17 @@ export function useFollowScroll<T extends HTMLElement>(active: number, enabled =
       else setFollowing(false);
     },
   };
+}
+
+// Sticky at the foot of the scroller it is dropped into, so it is on screen at
+// the moment it is wanted — which is precisely the moment the lyrics, and any
+// toolbar sitting with them, have been scrolled away from.
+export function FollowResume({ follow }: { follow: Pick<ReturnType<typeof useFollowScroll>, "following" | "resume"> }) {
+  if (follow.following) return null;
+  return (
+    <button className={styles.resume} onClick={follow.resume}>
+      <CrosshairSimple weight="bold" aria-hidden />
+      Back to playing
+    </button>
+  );
 }

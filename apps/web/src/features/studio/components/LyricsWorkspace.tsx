@@ -26,7 +26,7 @@ import { uuidV7 } from "../../../storage/ids";
 import { searchLyricsCandidates, type LrclibResult } from "../../lyrics/lrclib";
 import { parseChordLine } from "../../chords/chords";
 import { usePlaybackSession } from "../PlaybackSession";
-import { useFollowScroll } from "../useFollowScroll";
+import { FollowResume, useFollowScroll } from "../followScroll";
 
 const TABS: StudioTab[] = ["lyrics", "chords", "sheet", "takes"];
 const TAB_LABELS:Record<StudioTab,string>={lyrics:"Synced lyrics",chords:"Chords",sheet:"Plain lyrics",takes:"Takes"};
@@ -58,7 +58,6 @@ export function LyricsWorkspace({
 }) {
   const tab = useStudioStore((state) => state.tab),
     setTab = useStudioStore((state) => state.setTab),
-    following = useStudioStore((state) => state.lyricsFollowing),
     setFollowing = useStudioStore((state) => state.setLyricsFollowing),
     setLoop = useStudioStore((state) => state.setLoop),
     singScale = useStudioStore((state) => state.singScale),
@@ -78,7 +77,8 @@ export function LyricsWorkspace({
   const gesture = useRef<{ start: number; end: number; timer?: ReturnType<typeof setTimeout>; looped: boolean } | undefined>(undefined);
   const suppressClickUntil = useRef(0);
   const active = document ? activeLyricLine(document, currentTimeUs) : -1;
-  const { line: activeLine, resume, onScroll } = useFollowScroll<HTMLButtonElement>(active, !editing);
+  const follow = useFollowScroll<HTMLButtonElement>(active, !editing),
+    activeLine = follow.line;
   useEffect(() => () => { if (gesture.current?.timer) clearTimeout(gesture.current.timer); }, []);
   const toggleSingAlong = () => {
     const next = new URLSearchParams(searchParams);
@@ -300,7 +300,7 @@ export function LyricsWorkspace({
           className={`${styles.lyrics} ${singAlong ? styles.singAlong : ""}`}
           style={singAlong ? {"--sing-scale":singScale} as CSSProperties : undefined}
           role="tabpanel"
-          onScroll={onScroll}
+          onScroll={follow.onScroll}
           onWheel={() => setFollowing(false)}
           onTouchMove={() => setFollowing(false)}
           onPointerUpCapture={finishGesture}
@@ -310,7 +310,6 @@ export function LyricsWorkspace({
             {singAlong ? (
               <>
                 <strong>{songTitle}</strong>
-                <button onClick={resume}>{following ? "Jump to playing" : "Resume follow"}</button>
                 <button aria-label="Rewind 10 seconds" onClick={()=>seekTo?.(Math.max(0,currentTimeUs/1_000_000-10))}>−10s</button>
                 <button disabled={!playback.ready} onClick={()=>void playback.toggle()}>{playback.playing?"Pause":"Play"}</button>
                 <button aria-label="Forward 10 seconds" onClick={()=>seekTo?.(Math.min((durationUs??currentTimeUs)/1_000_000,currentTimeUs/1_000_000+10))}>+10s</button>
@@ -342,7 +341,6 @@ export function LyricsWorkspace({
               <CornersOut />
               Sing along
             </button>
-            {!editing && <button onClick={resume}>{following ? "Jump to playing" : "Resume follow"}</button>}
             <span>Offset {document.offsetUs / 1000} ms</span>
             <button
               aria-label="Decrease lyric offset"
@@ -481,6 +479,7 @@ export function LyricsWorkspace({
               Add line
             </button>
           )}
+          {!editing && <FollowResume follow={follow} />}
         </div>
       )}
       {tab === "chords" && (

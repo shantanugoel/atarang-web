@@ -25,7 +25,7 @@ import { usePlaybackSession } from "../PlaybackSession";
 import { useStudioStore } from "../studioStore";
 import { useChordAnalysis } from "../../chords/useChordAnalysis";
 import { useLyrics } from "../../lyrics/useLyrics";
-import { useFollowScroll } from "../useFollowScroll";
+import { FollowResume, useFollowScroll } from "../followScroll";
 import { activeLyricLine } from "../../lyrics/lrc";
 import { uuidV7 } from "../../../storage/ids";
 import styles from "./ChordWorkspace.module.css";
@@ -481,7 +481,6 @@ export function ChordWorkspace({
         <div className={styles.leadSheet}>
           <div className={styles.leadModes} aria-label="Lyrics and chords display">
             {(["both","lyrics","chords"] as const).map(mode => <button aria-pressed={leadMode===mode} key={mode} onClick={()=>setLeadMode(mode)}>{mode === "both" ? "Lyrics + chords" : mode === "lyrics" ? "Lyrics only" : "Chords only"}</button>)}
-            {!chart && lyrics && <button onClick={follow.resume}>{follow.following ? "Jump to playing" : "Resume follow"}</button>}
           </div>
           {chart ? <>
               <p>Selected chart · {chart.title}</p>
@@ -563,6 +562,7 @@ export function ChordWorkspace({
       </div>
       </div>
       ) : null}
+      {activeView === "lyricsChords" && !chart && lyrics && <FollowResume follow={follow} />}
       <input
         ref={input}
         className="sr-only"

@@ -572,13 +572,13 @@ test("sing-along follows timed lyrics and turns lyric gestures into a loop",asyn
     return document.querySelector('[data-line-index="0"]')!.getBoundingClientRect().top>=toolbar.bottom;
   })).toBe(true);
   await page.mouse.wheel(0,200);
-  await expect(page.getByRole("button",{name:"Resume follow"})).toBeVisible();
-  await page.getByRole("button",{name:"Resume follow"}).click();
+  await expect(page.getByRole("button",{name:"Back to playing"})).toBeVisible();
+  await page.getByRole("button",{name:"Back to playing"}).click();
   await page.waitForTimeout(700);
   // The smooth scroll resuming starts fires scroll events of its own, and
   // reading them as the user scrolling away used to switch following straight
   // back off before the line it was scrolling to had landed.
-  await expect(page.getByRole("button",{name:"Jump to playing"})).toBeVisible();
+  await expect(page.getByRole("button",{name:"Back to playing"})).toBeHidden();
   const first=page.getByRole("button",{name:/First line/}),second=page.getByRole("button",{name:/Second line/}),third=page.getByRole("button",{name:/Third line/});
   if(isMobile){
     const pointer={pointerId:1,pointerType:"touch",button:0,buttons:1,bubbles:true};
