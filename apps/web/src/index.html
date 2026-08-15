@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- maximum-scale, because iOS Safari ignores user-scalable but honours it:
+         pinch-zooming a fixed full-height app strands the transport off-screen,
+         and focusing an 11px select zooms the page in on its own. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#0b0d10" />
     <meta name="description" content="Atarang — a local-first music practice studio." />
     <link rel="manifest" href="./manifest.webmanifest" />
