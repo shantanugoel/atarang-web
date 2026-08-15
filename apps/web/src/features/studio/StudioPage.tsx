@@ -65,7 +65,7 @@ export function StudioPage() {
         <div><strong>{original?.title ?? DEMO_TRACK.title}</strong><span>{original?.artist ?? `${DEMO_TRACK.artist} · CC0 demo`}</span></div>
         <div className={styles.songActions}>
           <button className="icon-button" aria-label={imported?separation?"Separate song again":"Separate song":"Show track list"} onClick={()=>{if(imported){setSeparationError("");setSeparationSheet(true)}}}><ListBullets /></button>
-          {imported&&<input ref={separationInput} className="sr-only" type="file" multiple accept="application/json,.json,audio/*,.flac" aria-label="Choose manifest and four stem files" onChange={event=>void attachSeparation(event.target.files)}/>}
+          {imported&&<input ref={separationInput} className="sr-only" type="file" multiple accept="application/json,.json,audio/*,.mp3,.m4a,.aac,.wav,.flac,.ogg,.opus,.aiff" aria-label="Choose manifest and four stem files" onChange={event=>void attachSeparation(event.target.files)}/>}
         </div>
       </section>
       <nav className={styles.paneSwitch} aria-label="Studio panel">
