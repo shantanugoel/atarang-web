@@ -1,6 +1,6 @@
 # Next steps
 
-Sixteen things worth considering after v1, ranked. The last five are the ones to
+Eighteen things worth considering after v1, ranked. The last five are the ones to
 turn down on purpose — a roadmap without them is just a wishlist.
 
 The numbering has gaps because it is the original numbering, and the missing
@@ -40,6 +40,59 @@ exactly what a human skips before pushing.
   tablet — and the tablet one only runs the shell spec.
 - `chords-eval` and the separation spec are slow and gated behind their own
   environment flags; decide deliberately whether CI runs them.
+
+---
+
+### 26. The per-song lease refuses same-tab work, and blames another tab — ~0.5 d
+
+Arriving in the Studio starts waveform analysis, which takes
+`withSongMutationLease` on the song. Importing lands on `/studio/<id>?separate=1`,
+which opens the separation sheet on arrival. Press Start before analysis
+finishes and separation is refused with "This song is already being processed in
+another tab. Close the other tab or wait for it to finish." There is no other
+tab. It is this one, running analysis, and the advice cannot help.
+
+**Why:** It sits on the main import path — the sheet opens at the exact moment
+analysis is running, so the reader is invited to press the button that will
+fail. The message is not merely unclear, it is false, and it sends someone
+hunting for a tab that does not exist.
+
+**Why not:** It is recoverable by pressing Start again, and the model check
+often takes long enough that analysis has finished first, so it hits fast
+clickers and slow devices rather than everyone.
+
+**Watch out for:**
+- The lease is `ifAvailable: true`, so it refuses instead of queueing. Queueing
+  for same-tab work is probably the fix; a lease that waits changes the meaning
+  of every caller, so check `separationImporter` too.
+- Failing here is at least clean: the lease wraps `runUnlocked` from outside, so
+  no operation record is written and no partial stems exist.
+- The message is right for the case it was written for — a genuinely different
+  tab. Keep that wording for the cross-tab case and distinguish the two.
+
+### 27. `ensureWaveform` claims its lease after three awaits — ~0.5 d
+
+`ensureWaveform` checks the in-flight map only after awaiting the waveform, beat
+grid and chord lookups. It is called from `useWaveform` and `useBeatGrid`, which
+mount together, so both can pass the check and both claim the lease. One wins
+and analyses; the other is refused.
+
+**Why:** The two callers fail differently, and one does not recover.
+`useBeatGrid` subscribes to the library, so when the winner's analysis lands it
+refreshes and picks up the real grid. `useWaveform` has no subscription: it sets
+`status: "error"` and stays there, offering "Retry chord detection" for an
+analysis that in fact succeeded and is already in the database.
+
+**Why not:** No data is lost or wrong — the winner writes the real analysis, and
+retry returns instantly because `ensureWaveform` then finds it current.
+
+**Watch out for:**
+- The fix is to claim the in-flight slot synchronously, before the awaits, not
+  to widen the lease.
+- Both callers overwrite `active` with their own promise, so the map can end up
+  holding the rejected one; whatever replaces this should set it once.
+- Reproduces on first open of a newly imported song, which is also when someone
+  is most likely to be watching.
 
 ---
 
@@ -281,6 +334,8 @@ not a grade.
 | # | Item | Tier | Impact | ROI | Cplx | Effort | Why | Why not | Watch out for |
 |---|---|---|---|---|---|---|---|---|---|
 | 04 | CI workflow | Fix v1 | 4 | 4 | 2 | 1 d | No `.github/` exists; two things have already rotted unnoticed. | Solo project, checks run locally. | COOP/COEP headers, an empty `ATARANG_BACKEND_URL`, and three Playwright projects. |
+| 26 | Lease refuses same-tab work | Fix v1 | 4 | 5 | 1 | 0.5 d | On the import path, and the message blames a tab that does not exist. | Recoverable by pressing Start again. | `ifAvailable` refuses rather than queues; keep the real cross-tab wording. |
+| 27 | `ensureWaveform` races itself | Fix v1 | 3 | 4 | 2 | 0.5 d | Two hooks claim the same lease; `useWaveform` offers retry for analysis that succeeded. | No data lost; retry returns instantly. | Claim the in-flight slot before the awaits, not by widening the lease. |
 | 08 | Practice runlist | Next | 5 | 4 | 3 | 3 d | Sections, reps, pause and ramp all exist; nothing chains them. | Per-section overrides mean a schema change. | Ship without per-section speed first; watch `PracticeStateV1` and backups. |
 | 10 | Song packs (no audio) | Next | 4 | 5 | 2 | 2 d | `createBackup(false)` already does the hard part. | Needs a same-song matching rule. | Reuse the content hash and `healMissingAudio`, don't invent matching. |
 | 11 | Meter beyond 4/4 | Next | 3 | 3 | 3 | 4 d | Code admits the 4/4 assumption; waltzes are silently wrong. | Reaches into contract, worklet and count-in. | Manual override first; automatic detection may never be needed. |
