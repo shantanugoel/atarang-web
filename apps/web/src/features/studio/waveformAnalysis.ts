@@ -91,18 +91,32 @@ export async function ensureStemChordAnalysis(original: OriginalRecord, separati
   return promise;
 }
 
-export async function ensureWaveform(original: OriginalRecord) {
-  const [existing,beats,chords] = await Promise.all([getWaveform(original.id),getBeatGrid(original.id),getChordAnalysis(original.id)]);
-  // Any current chord algorithm counts. Requiring the mixture one exactly would
-  // re-run the whole pass on every open of a song whose chords have since been
-  // upgraded to the stem decode, and then overwrite that better answer.
-  // A grid the user corrected counts as current whatever detector produced it:
-  // the analysis below refuses to overwrite it, so asking for it again would
-  // re-run the whole pass on every open and never settle.
-  const beatsCurrent=beats?.document.algorithmVersion===CURRENT_BEAT_ALGORITHM||beats?.document.userEdited;
-  if (existing?.algorithmVersion === ALGORITHM_VERSION&&beatsCurrent&&CURRENT_CHORD_ALGORITHMS.includes(chords?.document.algorithmVersion as ChordAlgorithmV1)) return existing;
+/**
+ * The in-flight slot is claimed before the first await, not after the lookups.
+ *
+ * `useWaveform` and `useBeatGrid` mount together and both call this, and the
+ * three storage reads gave them all the time they needed to pass the in-flight
+ * check one after the other. Both then took the song lease; one analysed and
+ * one was refused. `useBeatGrid` recovered through its library subscription,
+ * but `useWaveform` has none, so it sat on "Retry chord detection" for an
+ * analysis that had in fact succeeded and was already stored. Claiming the slot
+ * synchronously is what makes the second caller a second caller — widening the
+ * lease would only move the race.
+ */
+export function ensureWaveform(original: OriginalRecord): Promise<WaveformRecord> {
   const running = active.get(original.id); if (running) return running;
-  const promise = withSongMutationLease(original.id,()=>analyze(original)).finally(() => active.delete(original.id));
+  const promise = (async () => {
+    const [existing,beats,chords] = await Promise.all([getWaveform(original.id),getBeatGrid(original.id),getChordAnalysis(original.id)]);
+    // Any current chord algorithm counts. Requiring the mixture one exactly would
+    // re-run the whole pass on every open of a song whose chords have since been
+    // upgraded to the stem decode, and then overwrite that better answer.
+    // A grid the user corrected counts as current whatever detector produced it:
+    // the analysis below refuses to overwrite it, so asking for it again would
+    // re-run the whole pass on every open and never settle.
+    const beatsCurrent=beats?.document.algorithmVersion===CURRENT_BEAT_ALGORITHM||beats?.document.userEdited;
+    if (existing?.algorithmVersion === ALGORITHM_VERSION&&beatsCurrent&&CURRENT_CHORD_ALGORITHMS.includes(chords?.document.algorithmVersion as ChordAlgorithmV1)) return existing;
+    return withSongMutationLease(original.id,()=>analyze(original));
+  })().finally(() => active.delete(original.id));
   active.set(original.id, promise); return promise;
 }
 
