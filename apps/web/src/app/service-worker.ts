@@ -1,5 +1,6 @@
 const CACHE = "atarang-shell-v2";
 const PRECACHE_MANIFEST = "/precache.json";
+const SHELL = "/index.html";
 
 // Long enough that a connection worth waiting for wins it, short enough that one
 // that is not does not hold a blank app. A dead radio rejects immediately and
@@ -20,7 +21,16 @@ async function populate() {
   if (!response.ok) throw new Error("precache_manifest_unavailable");
   const paths = await response.clone().json() as string[];
   await cache.put(PRECACHE_MANIFEST, response);
-  await cache.addAll(paths);
+  await cache.addAll(paths.filter((path) => path !== SHELL));
+  // The host answers /index.html with a redirect to /, and addAll stores what it
+  // followed, redirect flag and all. A worker may not answer a navigation with
+  // one of those: Safari refuses the page and says so, which is what the cached
+  // shell did the first time it was ever reached — offline was broken earlier in
+  // the path before, so this never got the chance to show. Storing a plain copy
+  // of the body drops the flag and keeps the shell answerable.
+  const shellResponse = await fetch(SHELL);
+  if (!shellResponse.ok) throw new Error("precache_shell_unavailable");
+  await cache.put(SHELL, new Response(await shellResponse.blob(), { status: 200, statusText: "OK", headers: shellResponse.headers }));
   // Every build writes new hashed names into a cache whose name never changes,
   // and nothing removed the ones they replaced — so it grew by a build on every
   // update, tens of megabytes of runtime at a time. A browser pays for that by
@@ -61,7 +71,7 @@ self.addEventListener("message", (event) => {
  *  navigation would name hashed assets that are not stored beside it — which
  *  reads as working until the next time there is no network. */
 async function shell(request: Request): Promise<Response> {
-  const cached = await caches.match("/index.html");
+  const cached = await caches.match(SHELL);
   if (!cached) return fetch(request);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), NAVIGATION_TIMEOUT_MS); });

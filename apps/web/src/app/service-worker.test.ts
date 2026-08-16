@@ -20,6 +20,13 @@ describe("service worker privacy boundary",()=>{
     expect(handler).not.toContain("cache.put");
     expect(handler).not.toContain("cache.addAll");
   });
+  // The host answers /index.html with a redirect to /, and a worker may not
+  // answer a navigation with a response that followed one — Safari refuses the
+  // page. addAll keeps the redirect, so the shell is stored by hand.
+  test("stores the shell without the redirect the host answers with",()=>{
+    expect(source).toContain("addAll(paths.filter((path) => path !== SHELL))");
+    expect(source).toContain("new Response(await shellResponse.blob()");
+  });
   // The bug this file is guarding against booted an app with every file already
   // on disk straight into a network request it could not make.
   test("reading the cache does not wait on the network",()=>{
