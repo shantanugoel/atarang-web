@@ -228,7 +228,11 @@ const publicPath = (path: string) => {
 const publicArtifacts = [...runtimeBuild.outputs, ...appBuild.outputs]
   .filter((output) => !output.path.endsWith(".map") && !output.path.endsWith(".html") && output.path !== serviceWorkerBuilt.path)
   .map((output) => publicPath(output.path));
-publicArtifacts.push(ortWasmUrl, ortMjsUrl);
+// Both runtimes, because which one a device loads is decided at run time and the
+// one a phone takes is the CPU pair. Precaching only the asyncify build left
+// exactly the devices that were routed away from WebGPU unable to separate
+// offline, which is the opposite of the intent.
+publicArtifacts.push(ortWasmUrl, ortMjsUrl, ortWasmCpuUrl, ortMjsCpuUrl);
 await Bun.write(`${outdir}/precache.json`, JSON.stringify(["/index.html", ...publicArtifacts]));
 for (const [name, url] of Object.entries(JSON.parse(generated.slice(generated.indexOf("{") , generated.lastIndexOf("}") + 1)) as Record<string,string>)) {
   if (!/^\/runtime\/.+-[a-z0-9]+\.js$/.test(url)) throw new Error(`${name} is not content hashed: ${url}`);
