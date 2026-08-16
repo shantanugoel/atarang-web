@@ -97,7 +97,7 @@ wheels = [
 
 [[package]]
 name = "atarang-acquisition"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "services/acquisition" }
 dependencies = [
     { name = "atarang-api" },
@@ -112,7 +112,7 @@ requires-dist = [
 
 [[package]]
 name = "atarang-api"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "services/api" }
 dependencies = [
     { name = "alembic" },
@@ -159,12 +159,12 @@ dev = [
 
 [[package]]
 name = "atarang-platform"
-version = "0.1.0"
+version = "0.2.0"
 source = { virtual = "." }
 
 [[package]]
 name = "atarang-separation-bench"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "bench/separation" }
 dependencies = [
     { name = "atarang-worker" },
@@ -175,7 +175,7 @@ requires-dist = [{ name = "atarang-worker", editable = "services/worker" }]
 
 [[package]]
 name = "atarang-worker"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "services/worker" }
 dependencies = [
     { name = "atarang-api" },

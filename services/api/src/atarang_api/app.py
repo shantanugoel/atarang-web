@@ -84,7 +84,7 @@ def create_app(
 
     app = FastAPI(
         title="Atarang API",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
         default_response_class=JSONResponse,
     )

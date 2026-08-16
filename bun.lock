@@ -7,7 +7,7 @@
     },
     "apps/web": {
       "name": "@atarang/web",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@atarang/contracts": "workspace:*",
         "@mediabunny/mp3-encoder": "1.54.0",
