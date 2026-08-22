@@ -7,6 +7,7 @@ coverage/
 private-sourcemaps/
 *.tsbuildinfo
 apps/web/src/generated/app-version.ts
+apps/web/src/generated/runtime-assets.ts
 
 # Browser and end-to-end test artifacts
 playwright-report/
