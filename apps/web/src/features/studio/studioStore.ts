@@ -103,6 +103,9 @@ export interface StudioState {
 }
 
 const stems: Record<StemKind, boolean> = { vocals: false, drums: false, bass: false, other: false };
+// Shared with the practice inspector so a stepper button at its limit reads as
+// disabled instead of clicking without effect.
+export const ADJUSTMENT_RANGES = { speed: [.5, 1, .05], pitch: [-12, 12, 1], repetitions: [1, 999, 1], pause: [0, 10, 1], countIn: [0, 4, 2], speedRamp: [0, 25, 1], singScale: [.7, 1.5, .1] } as const;
 const defaultLevels: Record<StemKind, number> = { vocals: 0, drums: 0, bass: -2.5, other: -4 };
 const centered: Record<StemKind, number> = { vocals: 0, drums: 0, bass: 0, other: 0 };
 const MIN_LOOP_US = 500_000;
@@ -204,8 +207,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   resetPractice: (durationUs) => set({ target:"vocals",muted:{...stems},soloed:{...stems},levels:{...defaultLevels},pan:{...centered},speed:1,pitch:0,repetitions:4,pause:2,countIn:2,metronome:true,loopEnabled:false,loopStartUs:0,loopEndUs:Math.max(MIN_LOOP_US,durationUs),sections:[],speedRamp:0 }),
   hydratePractice: (document, durationUs) => set({ target:document.target,muted:{...stems},soloed:{...stems},levels:{...document.stemGainDb},pan:{...(document.stemPan??centered)},speed:document.speed,pitch:document.pitchSemitones,repetitions:document.repetitions,pause:document.pauseSeconds,countIn:document.countIn,metronome:document.metronome,loopEnabled:document.loop.enabled,loopStartUs:Math.min(document.loop.startTimeUs,Math.max(0,durationUs-MIN_LOOP_US)),loopEndUs:Math.min(durationUs,Math.max(document.loop.endTimeUs,MIN_LOOP_US)),sections:document.sections??[],speedRamp:document.speedRampPercent??0 }),
   adjust: (key, delta) => set((s) => {
-    const ranges = { speed: [.5, 1, .05], pitch: [-12, 12, 1], repetitions: [1, 999, 1], pause: [0, 10, 1], countIn: [0, 4, 2], speedRamp: [0, 25, 1], singScale: [.7, 1.5, .1] } as const;
-    const [min, max, step] = ranges[key];
+    const [min, max, step] = ADJUSTMENT_RANGES[key];
     const value = Math.min(max, Math.max(min, Math.round(((s[key] + delta * step) + Number.EPSILON) * 100) / 100));
     return { [key]: value } as Pick<StudioState, typeof key>;
   }),

@@ -10,6 +10,19 @@ interface WorkerProgress { type: "import/progress"; requestId: string; operation
 
 function titleFromFileName(name: string) { return name.replace(/\.[^.]+$/, "").replaceAll(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 
+// Filenames usually carry the artist too: "Artist - Title (Official Video)".
+// Bracketed promo suffixes are noise on either side, and a last " - " splits
+// the pair; anything else keeps the old whole-name title with no artist. The
+// lyrics search prefills from both, so this is the difference between useful
+// LRCLIB matches out of the box and a dialog the user has to retype.
+function metadataFromFileName(name: string): { title: string; artist: string } {
+  const stem = name.replace(/\.[^.]+$/, "");
+  const cleaned = stem.replace(/[(\[][^)\]]*[)\]]/g, " ").replace(/\s+/g, " ").trim();
+  const split = cleaned.lastIndexOf(" - ");
+  if (split > 0) return { title: cleaned.slice(split + 3).trim(), artist: cleaned.slice(0, split).trim() };
+  return { title: titleFromFileName(stem), artist: "" };
+}
+
 async function probeDurationUs(file: File) {
   return new Promise<number>((resolve, reject) => {
     const audio = document.createElement("audio");
@@ -58,8 +71,9 @@ export async function importLocalFile(file: File, onProgress: (progress: ImportP
     });
     onProgress({ phase: "publishing", completedBytes: file.size, totalBytes: file.size });
     const committedAt = new Date().toISOString();
+    const metadata = metadataFromFileName(file.name);
     const blob: BlobRecord = { id: result.blobId, schemaVersion: 1, createdAt: committedAt, updatedAt: committedAt, sha256: result.sha256, byteLength: result.byteLength, mediaType: result.mediaType, opfsPath: result.opfsPath, referenceCount: 1 };
-    const original: OriginalRecord = { id: originalId, schemaVersion: 1, createdAt: committedAt, updatedAt: committedAt, title: titleFromFileName(file.name), artist: "Local import", sourceFileName: file.name, sourceMediaType: result.mediaType, byteLength: file.size, durationUs, contentSha256: result.sha256, blobId: result.blobId };
+    const original: OriginalRecord = { id: originalId, schemaVersion: 1, createdAt: committedAt, updatedAt: committedAt, title: metadata.title, artist: metadata.artist || "Local import", sourceFileName: file.name, sourceMediaType: result.mediaType, byteLength: file.size, durationUs, contentSha256: result.sha256, blobId: result.blobId };
     await publishImport(original, blob, operation);
     if (navigator.storage.persist) {
       try { await putSetting("storage.persistence", { granted: await navigator.storage.persist(), checkedAt: new Date().toISOString() }); } catch { /* Persistence is advisory; the committed import remains valid. */ }

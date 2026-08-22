@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Plus, X } from "@phosphor-icons/react";
-import { useStudioStore } from "../studioStore";
+import { useStudioStore, ADJUSTMENT_RANGES } from "../studioStore";
 import { tapTempoBpm } from "../tempo";
 import type {BeatGridV1} from "@atarang/contracts";
 import styles from "./PracticeInspector.module.css";
@@ -57,7 +57,7 @@ export function PracticeInspector({ durationUs, currentTimeUs = 0, stemsAvailabl
       </li>)}</ul>}
     </section>
     <section className={styles.controls}>
-      {rows.map(({key,label,format}) => {const disabled=key!=="speed"&&!stemsAvailable;return <div className={styles.row} key={key} title={disabled?STEM_ONLY_HINT:undefined}><label>{label}</label><div className={styles.stepper}><button disabled={disabled} onClick={()=>state.adjust(key,-1)} aria-label={`Decrease ${label}`}>−</button><output>{format(state[key])}</output><button disabled={disabled} onClick={()=>state.adjust(key,1)} aria-label={`Increase ${label}`}>+</button></div></div>})}
+      {rows.map(({key,label,format}) => {const disabled=key!=="speed"&&!stemsAvailable;const [min,max]=ADJUSTMENT_RANGES[key];return <div className={styles.row} key={key} title={disabled?STEM_ONLY_HINT:undefined}><label>{label}</label><div className={styles.stepper}><button disabled={disabled||state[key]<=min} onClick={()=>state.adjust(key,-1)} aria-label={`Decrease ${label}`}>−</button><output>{format(state[key])}</output><button disabled={disabled||state[key]>=max} onClick={()=>state.adjust(key,1)} aria-label={`Increase ${label}`}>+</button></div></div>})}
       {durationUs&&<div className={styles.row} title={tempoHint}><label>Tempo</label><div className={styles.stepper}><button disabled={!beatGrid} onClick={()=>beatGrid&&setTempo?.(beatGrid.bpm-1)} aria-label="Decrease tempo">−</button><output>{tempoLabel}</output><button disabled={!beatGrid} onClick={()=>beatGrid&&setTempo?.(beatGrid.bpm+1)} aria-label="Increase tempo">+</button></div></div>}
       {/* The way out when the detector is unsure: tap the tempo you hear rather than nudge a wrong one into place. */}
       {durationUs&&<div className={styles.row}><label>Tap tempo</label><button className={styles.tap} disabled={!beatGrid} onClick={tap}>Tap</button></div>}
