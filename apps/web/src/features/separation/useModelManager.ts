@@ -95,6 +95,14 @@ export function useModelManager() {
     // Another mounted copy of this hook may already be downloading.
     if (!manifest || downloadState) return;
     setError("");
+    // A 126 MB model written into storage the browser may reclaim at any
+    // moment is a gift to the evictor: it lands on top of the songs it can
+    // push out, and the crash that follows takes both. Asking costs nothing;
+    // a browser that says no gets told why nothing was downloaded instead of
+    // holding a model it will delete.
+    let granted = await (navigator.storage?.persisted?.().catch(() => false) ?? true);
+    if (!granted) { try { granted = await navigator.storage.persist(); } catch { granted = false; } }
+    if (!granted) { setError("persistence_denied"); return; }
     const estimate = await navigator.storage.estimate();
     const available = (estimate.quota ?? 0) - (estimate.usage ?? 0);
     const needed = manifest.totalBytes * 2 + Math.max(1_073_741_824, manifest.totalBytes * 0.2);

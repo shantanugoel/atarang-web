@@ -18,6 +18,7 @@ interface StorageStatus { persisted: boolean; usage: number; quota: number; libr
 const modelErrors: Record<string, string> = {
   built_in_model_unavailable: "This site does not publish the browser separation model, so local separation is unavailable here. Cloud separation and verified packages still work.",
   quota_exceeded: "There is not enough browser storage for the model. Free some space and try again.",
+  persistence_denied: "This browser declined to protect Atarang's storage, so a 126 MB download would probably be deleted along with your songs. Bookmark or install Atarang and ask again, or import stems made elsewhere.",
   model_integrity_failed: "The downloaded model did not match its checksums, so nothing was installed.",
   model_download_failed: "The model download did not finish. Your existing setup was not changed.",
   model_source_not_allowed: "The manifest points somewhere this app will not download from. Nothing was installed.",
