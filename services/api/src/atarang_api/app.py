@@ -90,7 +90,12 @@ def create_app(
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[config.public_origin.rstrip("/")],
+        # The deployment key is the auth here — no cookies, no ambient
+        # credentials — and the frontend is a static bundle that can be served
+        # from anywhere (localhost dev, Pages, the API's own origin). An origin
+        # allowlist only breaks those deployments; a caller without the key
+        # gets 401 regardless of where it calls from.
+        allow_origins=["*"],
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=[
             "Authorization",

@@ -194,7 +194,9 @@ def create_app(config=settings) -> FastAPI:
     app = FastAPI(title="Atarang YouTube", version="0.2.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[config.public_origin.rstrip("/")],
+        # Same reasoning as the API service: the key authenticates, the origin
+        # does not, and the static frontend can be served from anywhere.
+        allow_origins=["*"],
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Atarang-Key"],
         expose_headers=["Content-Length"],
