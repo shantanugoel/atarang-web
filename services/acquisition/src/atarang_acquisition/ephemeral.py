@@ -191,7 +191,7 @@ def create_app(config=settings) -> FastAPI:
         for job_id in list(jobs):
             discard(jobs, job_id)
 
-    app = FastAPI(title="Atarang YouTube", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Atarang YouTube", version="0.3.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         # Same reasoning as the API service: the key authenticates, the origin
