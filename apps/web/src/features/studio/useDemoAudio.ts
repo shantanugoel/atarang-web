@@ -30,7 +30,11 @@ export function useDemoAudio(speed = 1, enabled = true, volume = 1): ImportedPla
     const update = () => { wrapLoop(audio); setState((current) => ({ ...current, playing: !audio.paused, currentTimeUs: Math.round(audio.currentTime * 1_000_000), durationUs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000_000) : DEMO_TRACK.durationUs })); };
     const ready = () => setState((current) => ({ ...current, ready: true, error: "" }));
     const failed = () => setState((current) => ({ ...current, ready: false, playing: false, error: "The bundled demo audio could not be decoded by this browser." }));
+    // `update` also runs on `ended`, but by then the element is paused and
+    // wrapLoop's ordinary pass skips it; only this one may press play again.
+    const restart = () => wrapLoop(audio, true);
     for (const event of ["timeupdate", "play", "pause", "ended", "durationchange"]) audio.addEventListener(event, update);
+    audio.addEventListener("ended", restart);
     audio.addEventListener("canplay", ready);
     audio.addEventListener("error", failed);
     audio.load();
@@ -39,6 +43,7 @@ export function useDemoAudio(speed = 1, enabled = true, volume = 1): ImportedPla
       audio.removeAttribute("src");
       audio.load();
       for (const event of ["timeupdate", "play", "pause", "ended", "durationchange"]) audio.removeEventListener(event, update);
+      audio.removeEventListener("ended", restart);
       audio.removeEventListener("canplay", ready);
       audio.removeEventListener("error", failed);
       if (audioRef.current === audio) audioRef.current = null;

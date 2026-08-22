@@ -40,13 +40,22 @@ const AUDIO_RECLAIMED ="This song’s audio is no longer on this device — the 
  * per frame while it is playing and on every `timeupdate` in a hidden tab,
  * where frames stop. The four-stem engine loops inside the worklet and needs
  * none of this.
+ *
+ * A loop whose B sits at the song's last frame has one extra problem: the
+ * element raises `ended` and stops itself before any of the checks above can
+ * run again, and a paused element ignores every seek-based retry after that.
+ * So `ended` gets its own pass, with permission to press play again.
  */
-export function wrapLoop(audio: HTMLAudioElement) {
+export function wrapLoop(audio: HTMLAudioElement, resume = false) {
   const { loopEnabled, loopStartUs, loopEndUs } = useStudioStore.getState();
   // A seek already on its way still reports the old time, and asking for the
   // same one again only restarts it.
-  if (!loopEnabled || audio.paused || audio.seeking) return;
-  if (audio.currentTime * 1_000_000 >= loopEndUs) audio.currentTime = loopStartUs / 1_000_000;
+  if (!loopEnabled || audio.seeking) return;
+  if (!resume && audio.paused) return;
+  if (audio.currentTime * 1_000_000 >= loopEndUs) {
+    audio.currentTime = loopStartUs / 1_000_000;
+    if (resume && audio.paused) void audio.play().catch(() => { /* The user asked to stop; stay stopped. */ });
+  }
 }
 
 export function useLoopWrap(audioRef: RefObject<HTMLAudioElement | null>, playing: boolean) {
@@ -80,7 +89,11 @@ export function useImportedAudio(original?: OriginalRecord, speed = 1, volume = 
     const ready = () => setState((current) => ({ ...current, ready: true, error: "" }));
     const failed = (message: string) => setState((current) => ({ ...current, ready: false, playing: false, error: message }));
     const decodeFailed = () => failed("This stored audio could not be decoded by this browser.");
+    // `update` also runs on `ended`, but by then the element is paused and
+    // wrapLoop's ordinary pass skips it; only this one may press play again.
+    const restart = () => wrapLoop(audio, true);
     for (const event of ["timeupdate", "play", "pause", "ended", "durationchange"]) audio.addEventListener(event, update);
+    audio.addEventListener("ended", restart);
     audio.addEventListener("canplay", ready); audio.addEventListener("error", decodeFailed);
     void (async () => {
       const blob = await getBlob(original.blobId);
@@ -97,6 +110,7 @@ export function useImportedAudio(original?: OriginalRecord, speed = 1, volume = 
       cancelled = true; audio.pause(); audio.removeAttribute("src"); audio.load();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       for (const event of ["timeupdate", "play", "pause", "ended", "durationchange"]) audio.removeEventListener(event, update);
+      audio.removeEventListener("ended", restart);
       audio.removeEventListener("canplay", ready); audio.removeEventListener("error", decodeFailed);
       if (audioRef.current === audio) audioRef.current = null;
     };
